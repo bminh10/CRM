@@ -1,0 +1,454 @@
+@baseUrl = http://localhost:5005
+@token = replace-with-access-token
+@workspaceId = 00000000-0000-0000-0000-000000000001
+@userId = 00000000-0000-0000-0000-000000000002
+@companyId = 00000000-0000-0000-0000-000000000003
+@contactId = 00000000-0000-0000-0000-000000000004
+@pipelineId = 00000000-0000-0000-0000-000000000005
+@stageId = 00000000-0000-0000-0000-000000000006
+@opportunityId = 00000000-0000-0000-0000-000000000007
+@taskId = 00000000-0000-0000-0000-000000000008
+@eventId = 00000000-0000-0000-0000-000000000009
+@invitationId = 00000000-0000-0000-0000-000000000010
+@invitationToken = replace-with-invitation-token
+@auditLogId = 00000000-0000-0000-0000-000000000011
+
+### Health and readiness
+GET {{baseUrl}}/api/health
+GET {{baseUrl}}/api/health/live
+GET {{baseUrl}}/api/health/ready
+GET {{baseUrl}}/api/health/database
+
+### Authentication (set Authentication__SigningKey to a random secret of at least 32 characters)
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{"email":"new.user@example.com","password":"ReplaceWithLongPassword123!","fullName":"New User"}
+
+###
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{"email":"new.user@example.com","password":"ReplaceWithLongPassword123!"}
+
+###
+POST {{baseUrl}}/api/auth/logout
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/auth/refresh-token
+Content-Type: application/json
+
+{"refreshToken":"replace-with-refresh-token"}
+
+###
+POST {{baseUrl}}/api/auth/forgot-password
+Content-Type: application/json
+
+{"email":"new.user@example.com"}
+
+###
+POST {{baseUrl}}/api/auth/reset-password
+Content-Type: application/json
+
+{"token":"replace-with-reset-token","newPassword":"ReplaceWithAnotherLongPassword123!"}
+
+###
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### Users (self-service; global admin operations require additional schema/policy)
+GET {{baseUrl}}/api/users
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/users/{{userId}}
+Authorization: Bearer {{token}}
+
+###
+PUT {{baseUrl}}/api/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"fullName":"Updated User","avatarUrl":null}
+
+###
+PATCH {{baseUrl}}/api/users/{{userId}}/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"isActive":false}
+
+###
+DELETE {{baseUrl}}/api/users/{{userId}}
+Authorization: Bearer {{token}}
+
+### Workspaces
+POST {{baseUrl}}/api/workspaces
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"name":"Sales","description":"Sales team workspace"}
+
+###
+GET {{baseUrl}}/api/workspaces
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/workspaces/{{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+PUT {{baseUrl}}/api/workspaces/{{workspaceId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"name":"Sales team","description":"Updated description"}
+
+###
+DELETE {{baseUrl}}/api/workspaces/{{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/workspaces/{{workspaceId}}/members
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/workspaces/{{workspaceId}}/statistics
+Authorization: Bearer {{token}}
+
+### Workspace members and invitations
+POST {{baseUrl}}/api/workspaces/{{workspaceId}}/members
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"userId":"00000000-0000-0000-0000-000000000002","role":"member"}
+
+###
+GET {{baseUrl}}/api/workspaces/{{workspaceId}}/members/{{userId}}
+Authorization: Bearer {{token}}
+
+###
+PUT {{baseUrl}}/api/workspaces/{{workspaceId}}/members/{{userId}}/role
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"role":"admin"}
+
+###
+DELETE {{baseUrl}}/api/workspaces/{{workspaceId}}/members/{{userId}}
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/workspaces/{{workspaceId}}/members/me
+Authorization: Bearer {{token}}
+
+###
+PATCH {{baseUrl}}/api/workspaces/{{workspaceId}}/members/{{userId}}/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"status":"inactive"}
+
+###
+POST {{baseUrl}}/api/workspaces/{{workspaceId}}/invitations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"email":"invitee@example.com"}
+
+###
+GET {{baseUrl}}/api/workspaces/{{workspaceId}}/invitations
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/invitations/{{invitationToken}}/accept
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/invitations/{{invitationToken}}/reject
+Authorization: Bearer {{token}}
+
+###
+DELETE {{baseUrl}}/api/invitations/{{invitationId}}
+Authorization: Bearer {{token}}
+
+### Companies
+GET {{baseUrl}}/api/companies?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/companies/{{companyId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/companies
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","name":"Example Company","companyType":"customer"}
+
+###
+PUT {{baseUrl}}/api/companies/{{companyId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"name":"Updated Company","companyType":"customer"}
+
+###
+DELETE {{baseUrl}}/api/companies/{{companyId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+### Contacts
+GET {{baseUrl}}/api/contacts?workspaceId={{workspaceId}}&page=1&pageSize=50
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/contacts/{{contactId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/contacts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","companyId":"{{companyId}}","fullName":"Example Contact","email":"contact@example.com"}
+
+###
+PUT {{baseUrl}}/api/contacts/{{contactId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","companyId":"{{companyId}}","fullName":"Updated Contact","email":"contact@example.com"}
+
+###
+DELETE {{baseUrl}}/api/contacts/{{contactId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+### Pipelines and pipeline stages
+GET {{baseUrl}}/api/pipelines?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/pipelines/{{pipelineId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/pipelines
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","name":"Sales pipeline","description":null,"isDefault":true}
+
+###
+PUT {{baseUrl}}/api/pipelines/{{pipelineId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","name":"Updated pipeline","description":null,"isDefault":true}
+
+###
+DELETE {{baseUrl}}/api/pipelines/{{pipelineId}}
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/pipelines/{{pipelineId}}/stages
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/pipeline-stages/{{stageId}}
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/pipelines/{{pipelineId}}/stages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"name":"Qualified","position":0,"stageType":"open"}
+
+###
+PUT {{baseUrl}}/api/pipeline-stages/{{stageId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"name":"Qualified","position":0,"stageType":"open"}
+
+###
+DELETE {{baseUrl}}/api/pipeline-stages/{{stageId}}
+Authorization: Bearer {{token}}
+
+###
+PATCH {{baseUrl}}/api/pipelines/{{pipelineId}}/stages/reorder
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"stageIds":["{{stageId}}"]}
+
+### Opportunities and opportunity members
+GET {{baseUrl}}/api/opportunities?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/opportunities/{{opportunityId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/opportunities
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","pipelineId":"{{pipelineId}}","stageId":"{{stageId}}","companyId":"{{companyId}}","contactId":"{{contactId}}","title":"Example deal","expectedValue":1000,"probability":25}
+
+###
+PUT {{baseUrl}}/api/opportunities/{{opportunityId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","pipelineId":"{{pipelineId}}","stageId":"{{stageId}}","companyId":"{{companyId}}","contactId":"{{contactId}}","title":"Updated deal","expectedValue":1200,"probability":50}
+
+###
+DELETE {{baseUrl}}/api/opportunities/{{opportunityId}}
+Authorization: Bearer {{token}}
+
+###
+PATCH {{baseUrl}}/api/opportunities/{{opportunityId}}/stage
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"stageId":"{{stageId}}"}
+
+###
+PATCH {{baseUrl}}/api/opportunities/{{opportunityId}}/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"status":"won"}
+
+###
+GET {{baseUrl}}/api/opportunities/statistics?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/opportunities/{{opportunityId}}/members
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/opportunities/{{opportunityId}}/members
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"userId":"{{userId}}","isPrimary":true}
+
+###
+PUT {{baseUrl}}/api/opportunities/{{opportunityId}}/members/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"isPrimary":true}
+
+###
+DELETE {{baseUrl}}/api/opportunities/{{opportunityId}}/members/{{userId}}
+Authorization: Bearer {{token}}
+
+### Tasks
+GET {{baseUrl}}/api/tasks?workspaceId={{workspaceId}}&page=1&pageSize=50
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/tasks/{{taskId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/tasks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","opportunityId":"{{opportunityId}}","title":"Follow up","description":null,"priority":"medium","startDate":null,"dueDate":null,"assigneeUserIds":["{{userId}}"]}
+
+###
+PUT {{baseUrl}}/api/tasks/{{taskId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","opportunityId":"{{opportunityId}}","title":"Updated follow up","description":null,"priority":"high","startDate":null,"dueDate":null,"assigneeUserIds":["{{userId}}"]}
+
+###
+DELETE {{baseUrl}}/api/tasks/{{taskId}}?workspaceId={{workspaceId}}
+Authorization: Bearer {{token}}
+
+###
+PATCH {{baseUrl}}/api/tasks/{{taskId}}/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"status":"done"}
+
+###
+GET {{baseUrl}}/api/tasks/my-tasks
+Authorization: Bearer {{token}}
+
+### Calendar events
+GET {{baseUrl}}/api/calendar-events?workspaceId={{workspaceId}}&page=1&pageSize=50
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/calendar-events/{{eventId}}
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/calendar-events
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","companyId":"{{companyId}}","opportunityId":"{{opportunityId}}","title":"Customer meeting","description":null,"location":"Office","meetingUrl":null,"eventType":"offline","startTime":"2026-12-01T10:00:00Z","endTime":"2026-12-01T11:00:00Z","attendeeUserIds":["{{userId}}"]}
+
+###
+PUT {{baseUrl}}/api/calendar-events/{{eventId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"workspaceId":"{{workspaceId}}","companyId":"{{companyId}}","opportunityId":"{{opportunityId}}","title":"Updated meeting","description":null,"location":"Office","meetingUrl":null,"eventType":"offline","startTime":"2026-12-01T10:00:00Z","endTime":"2026-12-01T11:00:00Z","attendeeUserIds":["{{userId}}"]}
+
+###
+DELETE {{baseUrl}}/api/calendar-events/{{eventId}}
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/calendar-events/my-events
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/calendar-events/range?workspaceId={{workspaceId}}&start=2026-12-01T00:00:00Z&end=2026-12-02T00:00:00Z
+Authorization: Bearer {{token}}
+
+### Audit logs
+GET {{baseUrl}}/api/audit-logs?workspaceId={{workspaceId}}&page=1&pageSize=50
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/audit-logs/{{auditLogId}}
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/audit-logs/my-activity
+Authorization: Bearer {{token}}
+
+### Cloud admin (return 501 until an admin policy/provider is configured)
+GET {{baseUrl}}/api/admin/system-info
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/admin/metrics
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/admin/backup
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/api/admin/backups
+Authorization: Bearer {{token}}
+
+###
+POST {{baseUrl}}/api/admin/backups/{{auditLogId}}/restore
+Authorization: Bearer {{token}}
