@@ -1,6 +1,6 @@
 # Frontend
 
-Ứng dụng React JavaScript sử dụng Vite, Tailwind CSS và shadcn/ui.
+Ứng dụng React TypeScript sử dụng Vite, Tailwind CSS và shadcn/ui.
 
 ```powershell
 cd Frontend

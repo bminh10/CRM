@@ -3,15 +3,17 @@ import { ArrowRight, Eye, EyeOff, Layers3, LockKeyhole, Mail, ShieldCheck, Users
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { isAuthSession, type AuthSession } from '@/types/auth'
+import type { FormEvent } from 'react'
 
-function LoginPage({ onLogin }) {
+function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleLogin(event) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (loading) return
 
@@ -35,9 +37,8 @@ function LoginPage({ onLogin }) {
         return
       }
 
-      const result = await response.json()
-      if (!result.user?.fullName || !result.tokens?.accessToken || !result.tokens?.refreshToken ||
-          !Number.isFinite(result.tokens.expiresIn) || result.tokens.expiresIn <= 0) {
+      const result: unknown = await response.json()
+      if (!isAuthSession(result)) {
         throw new Error('Invalid login response')
       }
       onLogin(result)

@@ -1,7 +1,8 @@
 import { ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import type { AuthUser } from '@/types/auth'
 
-function DashboardPage({ user, onLogout }) {
+function DashboardPage({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f7f8fc] px-6 text-slate-900">
       <div className="w-full max-w-[400px]">
