@@ -1,16 +1,21 @@
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { useEffect, useState } from 'react'
+import { BrowserRouter } from 'react-router-dom'
+import AppRoutes from '@/routes'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [session, setSession] = useState(null)
+
+  useEffect(() => {
+    if (!session) return
+
+    const timer = setTimeout(() => setSession(null), session.tokens.expiresIn * 1000)
+    return () => clearTimeout(timer)
+  }, [session])
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4">
-      <h1 className="text-2xl font-semibold">React + shadcn/ui</h1>
-      <Button onClick={() => setCount((value) => value + 1)}>
-        Count: {count}
-      </Button>
-    </main>
+    <BrowserRouter>
+      <AppRoutes session={session} onLogin={setSession} onLogout={() => setSession(null)} />
+    </BrowserRouter>
   )
 }
 
