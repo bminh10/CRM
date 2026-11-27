@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { addStage as addStageRequest, deleteRecord, deleteStage, listRecords, listStages, renameStage, reorderStages, saveRecord } from '@/services/crm'
+import { addStage as addStageRequest, deleteRecord, deleteStage, listRecords, listStages, removeWorkspaceMember, renameStage, reorderStages, saveRecord, updateWorkspaceMemberRole } from '@/services/crm'
 import type { RecordItem } from '@/types/crm'
 import ActivityForm from './ActivityForm'
 import OpportunityForm from './OpportunityForm'
@@ -31,7 +31,7 @@ const sections: Record<string, Section> = {
   calendar: { title: 'Lịch làm việc', description: 'Các cuộc hẹn online và offline.', paginated: true, editable: true, columns: ['title', 'eventType', 'startTime', 'location'], fields: [
     { key: 'title', label: 'Cuộc hẹn', required: true }, { key: 'description', label: 'Mô tả' }, { key: 'eventType', label: 'Hình thức' }, { key: 'companyId', label: 'ID công ty liên quan' }, { key: 'opportunityId', label: 'ID cơ hội liên quan' }, { key: 'startTime', label: 'Bắt đầu' }, { key: 'endTime', label: 'Kết thúc' }, { key: 'location', label: 'Địa điểm' }, { key: 'meetingUrl', label: 'Liên kết cuộc họp' }, { key: 'attendeeUserIds', label: 'ID người tham dự' }, { key: 'createdAt', label: 'Ngày tạo' }, { key: 'updatedAt', label: 'Cập nhật lần cuối' },
   ] },
-  members: { title: 'Thành viên', description: 'Thành viên của workspace. CRUD tài khoản nhân viên chưa được backend hỗ trợ.', columns: ['fullName', 'email', 'role'], fields: [{ key: 'fullName', label: 'Họ và tên' }, { key: 'email', label: 'Email' }, { key: 'role', label: 'Vai trò' }] },
+  members: { title: 'Thành viên', description: 'Quản lý vai trò và quyền truy cập của thành viên trong workspace.', editable: true, columns: ['fullName', 'email', 'role'], fields: [{ key: 'fullName', label: 'Họ và tên' }, { key: 'email', label: 'Email' }, { key: 'role', label: 'Vai trò', options: [{ value: 'owner', label: 'Chủ sở hữu' }, { value: 'editor', label: 'Có thể chỉnh sửa' }, { value: 'viewer', label: 'Chỉ xem' }] }] },
 }
 
 const valueLabels: Record<string, string> = {
@@ -95,7 +95,9 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
 
   function openForm(item?: RecordItem) {
     setEditing(item ?? null)
-    setForm(Object.fromEntries(config.fields.map(field => [field.key, item?.[field.key]?.toString() ?? (field.key === 'companyType' ? 'customer' : '')])))
+    setForm(section === 'members'
+      ? { role: item?.role?.toString() ?? 'viewer' }
+      : Object.fromEntries(config.fields.map(field => [field.key, item?.[field.key]?.toString() ?? (field.key === 'companyType' ? 'customer' : '')])))
     setShowForm(true); setError('')
   }
 
@@ -105,6 +107,14 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
     if (config.fields.some(field => field.required && !form[field.key]?.trim())) { setError('Vui lòng nhập các trường bắt buộc.'); return }
     setSaving(true); setError('')
     try {
+      if (section === 'members') {
+        if (!editing) return
+        const userId = String(editing.userId ?? editing.id)
+        await updateWorkspaceMemberRole(workspaceId, userId, form.role as 'owner' | 'editor' | 'viewer')
+        setShowForm(false)
+        await load()
+        return
+      }
       const body: Record<string, unknown> = { ...(editing ?? {}), workspaceId }
       for (const field of config.fields) body[field.key] = form[field.key]?.trim() || null
       if (section === 'pipelines') body.isDefault = editing?.isDefault ?? false
@@ -116,10 +126,14 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
   }
 
   async function remove(item: RecordItem) {
-    if (!window.confirm('Bạn có chắc muốn xóa mục này?')) return
+    const message = section === 'members'
+      ? 'Bạn có chắc muốn xóa thành viên này khỏi workspace?'
+      : 'Bạn có chắc muốn xóa mục này?'
+    if (!window.confirm(message)) return
     setError('')
     try {
-      await deleteRecord(section, workspaceId, item.id)
+      if (section === 'members') await removeWorkspaceMember(workspaceId, String(item.userId ?? item.id))
+      else await deleteRecord(section, workspaceId, String(item.id))
       await load()
     } catch (e) { setError(e instanceof Error ? e.message : 'Không thể xóa dữ liệu.') }
   }
@@ -172,7 +186,8 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
     {!config.editable && section !== 'members' && <p className="mt-4 text-xs text-[#8493aa]">Hiện tại hỗ trợ xem và tạo mới; chỉnh sửa đang được phát triển.</p>}
     {error && <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
     {showForm && section === 'opportunities' && <OpportunityForm key={editing?.id ?? 'new'} workspaceId={workspaceId} item={editing} onSaved={() => { setShowForm(false); void load() }} onCancel={() => setShowForm(false)} />}
-    {showForm && config.editable && section !== 'opportunities' && section !== 'tasks' && section !== 'calendar' && <form onSubmit={submit} className="mt-6 rounded-2xl border border-[#e2e8f4] bg-white p-6"><h2 className="mb-5 text-lg font-semibold">{editing ? 'Chỉnh sửa' : 'Thêm mới'} {config.title.toLowerCase()}</h2><div className="grid gap-4 sm:grid-cols-2">{config.fields.map(field => <div key={field.key} className="space-y-2"><Label htmlFor={`field-${field.key}`}>{field.label}{field.required && ' *'}</Label>{field.options ? <select id={`field-${field.key}`} value={form[field.key] ?? ''} onChange={e => setForm({ ...form, [field.key]: e.target.value })} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm">{field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <Input id={`field-${field.key}`} type={field.type ?? 'text'} required={field.required} value={form[field.key] ?? ''} onChange={e => setForm({ ...form, [field.key]: e.target.value })} />}</div>)}</div><div className="mt-5 flex gap-2"><Button disabled={saving} className="bg-[#243d9a] text-white hover:bg-[#1c327f]">{saving ? 'Đang lưu...' : 'Lưu'}</Button><Button type="button" variant="outline" onClick={() => setShowForm(false)}>Hủy</Button></div></form>}
+    {showForm && section === 'members' && editing && <form onSubmit={submit} className="mt-6 rounded-2xl border border-[#e2e8f4] bg-white p-6"><h2 className="mb-1 text-lg font-semibold">Chỉnh sửa vai trò thành viên</h2><p className="mb-5 text-sm text-[#8998ae]">{String(editing.fullName)} · {String(editing.email)}</p><div className="max-w-sm space-y-2"><Label htmlFor="member-role">Vai trò</Label><select id="member-role" value={form.role ?? 'viewer'} onChange={e => setForm({ role: e.target.value })} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm"><option value="owner">Chủ sở hữu</option><option value="editor">Có thể chỉnh sửa</option><option value="viewer">Chỉ xem</option></select></div><div className="mt-5 flex gap-2"><Button disabled={saving} className="bg-[#243d9a] text-white hover:bg-[#1c327f]">{saving ? 'Đang lưu...' : 'Lưu vai trò'}</Button><Button type="button" variant="outline" onClick={() => setShowForm(false)}>Hủy</Button></div></form>}
+    {showForm && config.editable && section !== 'members' && section !== 'opportunities' && section !== 'tasks' && section !== 'calendar' && <form onSubmit={submit} className="mt-6 rounded-2xl border border-[#e2e8f4] bg-white p-6"><h2 className="mb-5 text-lg font-semibold">{editing ? 'Chỉnh sửa' : 'Thêm mới'} {config.title.toLowerCase()}</h2><div className="grid gap-4 sm:grid-cols-2">{config.fields.map(field => <div key={field.key} className="space-y-2"><Label htmlFor={`field-${field.key}`}>{field.label}{field.required && ' *'}</Label>{field.options ? <select id={`field-${field.key}`} value={form[field.key] ?? ''} onChange={e => setForm({ ...form, [field.key]: e.target.value })} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm">{field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <Input id={`field-${field.key}`} type={field.type ?? 'text'} required={field.required} value={form[field.key] ?? ''} onChange={e => setForm({ ...form, [field.key]: e.target.value })} />}</div>)}</div><div className="mt-5 flex gap-2"><Button disabled={saving} className="bg-[#243d9a] text-white hover:bg-[#1c327f]">{saving ? 'Đang lưu...' : 'Lưu'}</Button><Button type="button" variant="outline" onClick={() => setShowForm(false)}>Hủy</Button></div></form>}
     {showForm && (section === 'tasks' || section === 'calendar') && <ActivityForm key={`${section}:${editing?.id ?? 'new'}`} workspaceId={workspaceId} kind={section} item={editing} onSaved={() => { setShowForm(false); void load() }} onCancel={() => setShowForm(false)} />}
     {section === 'pipelines' && !loading && <div className="mx-auto mt-5 max-w-5xl"><PipelineBoard workspaceId={workspaceId} pipelines={items} revision={stageRevision} /></div>}
     {section !== 'pipelines' ? <RecordWorkspace title={config.title} description={config.description} fields={config.fields} columns={config.columns} items={items} total={total} loading={loading} editable={config.editable} paginated={config.paginated} displayValue={displayValue} onEdit={openForm} onDelete={item => void remove(item)} /> :

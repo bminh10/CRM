@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
-import { ArrowUpRight, BarChart3, Building2, CalendarDays, CheckSquare, GitBranch, Layers3, LogOut, Target, UsersRound } from 'lucide-react'
+import { ArrowUpRight, BarChart3, Building2, CalendarDays, CheckSquare, GitBranch, Layers3, LogOut, Target, UserRound, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import InvitationInbox from '@/components/InvitationInbox'
 import { ensurePersonalWorkspace, getStatistics, listWorkspaces } from '@/services/crm'
 import type { AuthSession } from '@/types/auth'
 import type { Statistics, Workspace } from '@/types/crm'
 import RecordsPage from './RecordsPage'
+import ProfilePage from './ProfilePage'
 
 const links = [
   { to: '/dashboard', label: 'Tổng quan', icon: BarChart3, end: true },
@@ -17,6 +18,7 @@ const links = [
   { to: '/dashboard/tasks', label: 'Công việc', icon: CheckSquare },
   { to: '/dashboard/calendar', label: 'Lịch làm việc', icon: CalendarDays },
   { to: '/dashboard/members', label: 'Thành viên', icon: UsersRound },
+  { to: '/dashboard/profile', label: 'Hồ sơ', icon: UserRound },
 ]
 
 function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
@@ -57,7 +59,7 @@ function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: 
     </header>
     <main className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6">
       {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} <button type="button" className="underline" onClick={() => void loadWorkspaces()}>Thử lại</button></div>}
-      {loading ? <p className="p-6 text-sm text-slate-500">Đang tải workspace...</p> : workspaceId && <Routes><Route index element={<Overview workspaceId={workspaceId} userName={session.user.fullName} />} /><Route path=":section" element={<RecordsPage key={`${workspaceId}:${location.pathname}`} workspaceId={workspaceId} />} /></Routes>}
+      {loading ? <p className="p-6 text-sm text-slate-500">Đang tải workspace...</p> : <Routes><Route index element={workspaceId ? <Overview workspaceId={workspaceId} userName={session.user.fullName} /> : null} /><Route path="profile" element={<ProfilePage />} /><Route path=":section" element={workspaceId ? <RecordsPage key={`${workspaceId}:${location.pathname}`} workspaceId={workspaceId} /> : null} /></Routes>}
     </main>
   </div>
 }

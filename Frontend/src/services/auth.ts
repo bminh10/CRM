@@ -25,4 +25,38 @@ export async function getSession(): Promise<AuthSession> {
   return result
 }
 
+export interface UserProfile {
+  email: string
+  fullName: string
+  isOtpConfigured: boolean
+}
+
+export interface OtpSetup {
+  secret: string
+  provisioningUri: string
+  expiresAt: string
+}
+
+export function getUserProfile() {
+  return api<UserProfile>('/users/profile')
+}
+
+export function setupOtp(email: string) {
+  return api<OtpSetup>('/auth/otp/setup', { method: 'POST', body: JSON.stringify({ email }) })
+}
+
+export function verifyOtpSetup(email: string, code: string) {
+  return api<{ isOtpConfigured: boolean }>('/auth/otp/verify-setup', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  })
+}
+
+export function changePassword(email: string, code: string, newPassword: string) {
+  return api<{ message: string }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, code, newPassword }),
+  })
+}
+
 export { ApiError, logoutSession } from './api'

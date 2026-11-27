@@ -17,6 +17,18 @@ public sealed class UsersController(CrmDbContext db) : ControllerBase
         message = "Global user listing requires a system administrator role, which is not represented in the current schema."
     });
 
+    [HttpGet("profile")]
+    public async Task<IActionResult> GetProfile(CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+        var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        return user is null
+            ? Unauthorized()
+            : Ok(new UserProfileResponse(user.Email, user.FullName, user.OtpSecret is not null));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
@@ -64,3 +76,4 @@ public sealed class UsersController(CrmDbContext db) : ControllerBase
 }
 
 public sealed record UpdateUserRequest(string FullName, string? AvatarUrl);
+public sealed record UserProfileResponse(string Email, string FullName, bool IsOtpConfigured);

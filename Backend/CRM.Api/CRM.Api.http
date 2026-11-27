@@ -79,6 +79,31 @@ Content-Type: application/json
 GET {{baseUrl}}/api/auth/me
 Authorization: Bearer {{token}}
 
+###
+POST {{baseUrl}}/api/auth/otp/setup
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"email":"new.user@example.com"}
+
+###
+POST {{baseUrl}}/api/auth/otp/verify-setup
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"email":"new.user@example.com","code":"123456"}
+
+###
+POST {{baseUrl}}/api/auth/change-password
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"email":"new.user@example.com","code":"123456","newPassword":"ReplaceWithAnotherLongPassword123!"}
+
+###
+GET {{baseUrl}}/api/users/profile
+Authorization: Bearer {{token}}
+
 ### Users (self-service; global admin operations require additional schema/policy)
 GET {{baseUrl}}/api/users
 Authorization: Bearer {{token}}

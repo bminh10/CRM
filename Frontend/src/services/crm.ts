@@ -52,7 +52,17 @@ export function saveRecord(section: string, workspaceId: string, id: string | un
 }
 export function deleteRecord(section: string, workspaceId: string, id: string) {
   const config = endpoint(section)
-  return api<void>(`${config.path}/${id}${config.queryOnItem ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, { method: 'DELETE' })
+  const path = config.path.replace('{workspaceId}', workspaceId)
+  return api<void>(`${path}/${id}${config.queryOnItem ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, { method: 'DELETE' })
+}
+export function updateWorkspaceMemberRole(workspaceId: string, userId: string, role: 'owner' | 'editor' | 'viewer') {
+  return api<void>(`/workspaces/${workspaceId}/members/${userId}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  })
+}
+export function removeWorkspaceMember(workspaceId: string, userId: string) {
+  return api<void>(`/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' })
 }
 export function listPipelines(workspaceId: string) {
   return api<Option[]>(`/pipelines?workspaceId=${encodeURIComponent(workspaceId)}`)

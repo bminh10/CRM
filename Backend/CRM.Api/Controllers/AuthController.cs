@@ -5,15 +5,23 @@ using CRM.Api.Data;
 using CRM.Api.Models;
 using CRM.Api.Security;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRM.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public sealed class AuthController(CrmDbContext db, CrmTokenService tokens, IWebHostEnvironment environment) : ControllerBase
+public sealed class AuthController(
+    CrmDbContext db,
+    CrmTokenService tokens,
+    IWebHostEnvironment environment,
+    IDataProtectionProvider protectionProvider) : ControllerBase
 {
+    private readonly IDataProtector otpProtector = protectionProvider.CreateProtector("CRM.Api.UserOtp.v1");
+
     [AllowAnonymous]
     [HttpPost("register")]
     [HttpPost("session/register")]
@@ -137,6 +145,126 @@ public sealed class AuthController(CrmDbContext db, CrmTokenService tokens, IWeb
     });
 
     [Authorize]
+    [EnableRateLimiting("otp")]
+    [HttpPost("otp/setup")]
+    public async Task<IActionResult> SetupOtp(SetupOtpRequest request, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+        var user = await db.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+            return Unauthorized();
+        if (!EmailMatches(request.Email, user.Email))
+            return BadRequest(new { message = "Email không khớp với tài khoản hiện tại." });
+        if (user.OtpSecret is not null)
+            return Conflict(new { message = "OTP đã được thiết lập cho tài khoản này." });
+
+        var secret = TotpService.GenerateSecret();
+        user.OtpPendingSecret = otpProtector.Protect(secret);
+        user.OtpPendingExpiresAt = DateTime.UtcNow.AddMinutes(10);
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new SetupOtpResponse(secret, TotpService.CreateProvisioningUri(user.Email, secret), user.OtpPendingExpiresAt.Value));
+    }
+
+    [Authorize]
+    [EnableRateLimiting("otp")]
+    [HttpPost("otp/verify-setup")]
+    public async Task<IActionResult> VerifyOtpSetup(VerifyOtpSetupRequest request, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+        var user = await db.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+            return Unauthorized();
+        if (!EmailMatches(request.Email, user.Email))
+            return BadRequest(new { message = "Email không khớp với tài khoản hiện tại." });
+        if (user.OtpSecret is not null)
+            return Conflict(new { message = "OTP đã được thiết lập cho tài khoản này." });
+        if (user.OtpPendingSecret is null || user.OtpPendingExpiresAt <= DateTime.UtcNow)
+        {
+            user.OtpPendingSecret = null;
+            user.OtpPendingExpiresAt = null;
+            await db.SaveChangesAsync(cancellationToken);
+            return BadRequest(new { message = "Phiên thiết lập OTP đã hết hạn. Hãy bắt đầu thiết lập lại." });
+        }
+
+        string secret;
+        try
+        {
+            secret = otpProtector.Unprotect(user.OtpPendingSecret);
+        }
+        catch (CryptographicException)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "Không thể đọc cấu hình OTP. Vui lòng liên hệ quản trị viên." });
+        }
+        if (!TotpService.TryVerify(secret, request.Code, DateTimeOffset.UtcNow, out var matchedStep))
+            return BadRequest(new { message = "Mã OTP không hợp lệ." });
+
+        var now = DateTime.UtcNow;
+        var updated = await db.Users
+            .Where(x => x.Id == userId && x.OtpSecret == null
+                && x.OtpPendingSecret == user.OtpPendingSecret
+                && x.OtpPendingExpiresAt > now)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.OtpSecret, user.OtpPendingSecret)
+                .SetProperty(x => x.OtpPendingSecret, (string?)null)
+                .SetProperty(x => x.OtpPendingExpiresAt, (DateTime?)null)
+                .SetProperty(x => x.OtpLastUsedStep, (long?)matchedStep)
+                .SetProperty(x => x.UpdateAt, now), cancellationToken);
+        if (updated == 0)
+            return Conflict(new { message = "Phiên thiết lập OTP đã hết hạn hoặc được xác nhận trước đó." });
+        return Ok(new { isOtpConfigured = true });
+    }
+
+    [Authorize]
+    [EnableRateLimiting("otp")]
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length is < 12 or > 1024)
+            return BadRequest(new { message = "Mật khẩu mới phải có từ 12 đến 1024 ký tự." });
+        var user = await db.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+            return Unauthorized();
+        if (!EmailMatches(request.Email, user.Email))
+            return BadRequest(new { message = "Email không khớp với tài khoản hiện tại." });
+        if (user.OtpSecret is null)
+            return Conflict(new { message = "Hãy thiết lập OTP trong Hồ sơ trước khi đổi mật khẩu." });
+
+        string secret;
+        try
+        {
+            secret = otpProtector.Unprotect(user.OtpSecret);
+        }
+        catch (CryptographicException)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "Không thể đọc cấu hình OTP. Vui lòng liên hệ quản trị viên." });
+        }
+        if (!TotpService.TryVerify(secret, request.Code, DateTimeOffset.UtcNow, out var matchedStep)
+            || matchedStep <= (user.OtpLastUsedStep ?? -1))
+            return BadRequest(new { message = "Mã OTP không hợp lệ hoặc đã được sử dụng." });
+
+        var now = DateTime.UtcNow;
+        var updated = await db.Users
+            .Where(x => x.Id == userId && x.OtpSecret == user.OtpSecret
+                && (x.OtpLastUsedStep == null || x.OtpLastUsedStep < matchedStep))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Password, HashPassword(request.NewPassword))
+                .SetProperty(x => x.OtpLastUsedStep, (long?)matchedStep)
+                .SetProperty(x => x.UpdateAt, now), cancellationToken);
+        if (updated == 0)
+            return BadRequest(new { message = "Mã OTP không hợp lệ hoặc đã được sử dụng." });
+        return Ok(new { message = "Đã đổi mật khẩu." });
+    }
+
+    [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> Me(CancellationToken cancellationToken)
     {
@@ -154,6 +282,13 @@ public sealed class AuthController(CrmDbContext db, CrmTokenService tokens, IWeb
     }
 
     private bool IsCookieSessionRequest() => Request.Path.StartsWithSegments("/api/auth/session");
+
+    private bool TryGetCurrentUserId(out Guid userId) =>
+        Guid.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out userId);
+
+    private static bool EmailMatches(string submittedEmail, string accountEmail) =>
+        !string.IsNullOrWhiteSpace(submittedEmail)
+        && string.Equals(submittedEmail.Trim(), accountEmail, StringComparison.OrdinalIgnoreCase);
 
     private object CreateCookieSession(User user)
     {
@@ -207,4 +342,8 @@ public sealed class AuthController(CrmDbContext db, CrmTokenService tokens, IWeb
 public sealed record RegisterRequest(string Email, string Password, string FullName);
 public sealed record LoginRequest(string Email, string Password);
 public sealed record RefreshTokenRequest(string RefreshToken);
+public sealed record SetupOtpRequest(string Email);
+public sealed record SetupOtpResponse(string Secret, string ProvisioningUri, DateTime ExpiresAt);
+public sealed record VerifyOtpSetupRequest(string Email, string Code);
+public sealed record ChangePasswordRequest(string Email, string Code, string NewPassword);
 public sealed record UserResponse(Guid Id, string Email, string FullName, string? AvatarUrl);

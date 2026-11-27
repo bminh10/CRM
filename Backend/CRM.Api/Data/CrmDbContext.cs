@@ -539,6 +539,10 @@ public partial class CrmDbContext : DbContext
             entity.Property(e => e.IsVerified)
                 .HasDefaultValue(false)
                 .HasColumnName("is_verified");
+            entity.Property(e => e.OtpLastUsedStep).HasColumnName("otp_last_used_step");
+            entity.Property(e => e.OtpPendingExpiresAt).HasColumnName("otp_pending_expires_at");
+            entity.Property(e => e.OtpPendingSecret).HasColumnName("otp_pending_secret");
+            entity.Property(e => e.OtpSecret).HasColumnName("otp_secret");
             entity.Property(e => e.Password).HasColumnName("password");
             entity.Property(e => e.UpdateAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")

@@ -21,6 +21,14 @@ public partial class User
 
     public DateTime? UpdateAt { get; set; }
 
+    public string? OtpSecret { get; set; }
+
+    public string? OtpPendingSecret { get; set; }
+
+    public DateTime? OtpPendingExpiresAt { get; set; }
+
+    public long? OtpLastUsedStep { get; set; }
+
     public virtual ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
 
     public virtual ICollection<CalendarEventAttendee> CalendarEventAttendees { get; set; } = new List<CalendarEventAttendee>();
