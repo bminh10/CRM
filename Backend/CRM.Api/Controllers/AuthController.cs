@@ -12,10 +12,11 @@ namespace CRM.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public sealed class AuthController(CrmDbContext db, CrmTokenService tokens) : ControllerBase
+public sealed class AuthController(CrmDbContext db, CrmTokenService tokens, IWebHostEnvironment environment) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("register")]
+    [HttpPost("session/register")]
     public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password)
@@ -41,6 +42,8 @@ public sealed class AuthController(CrmDbContext db, CrmTokenService tokens) : Co
         };
         db.Users.Add(user);
         await db.SaveChangesAsync(cancellationToken);
+        if (IsCookieSessionRequest())
+            return Created($"/api/users/{user.Id}", CreateCookieSession(user));
         return Created($"/api/users/{user.Id}", new
         {
             user = new UserResponse(user.Id, user.Email, user.FullName, user.AvatarUrl),
@@ -50,6 +53,7 @@ public sealed class AuthController(CrmDbContext db, CrmTokenService tokens) : Co
 
     [AllowAnonymous]
     [HttpPost("login")]
+    [HttpPost("session/login")]
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password)
@@ -68,7 +72,32 @@ public sealed class AuthController(CrmDbContext db, CrmTokenService tokens) : Co
             user.UpdateAt = DateTime.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
         }
+        if (IsCookieSessionRequest())
+            return Ok(CreateCookieSession(user));
         return Ok(new { user = new UserResponse(user.Id, user.Email, user.FullName, user.AvatarUrl), tokens = CreateTokenResponse(user) });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("session/logout")]
+    public IActionResult SessionLogout()
+    {
+        CrmSessionCookies.Clear(HttpContext, environment);
+        return NoContent();
+    }
+
+    [AllowAnonymous]
+    [HttpPost("session/refresh")]
+    public async Task<IActionResult> RefreshSession(CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        if (!Request.Cookies.TryGetValue(CrmSessionCookies.RefreshName, out var refreshToken)
+            || !tokens.TryValidate(refreshToken, "refresh", out var principal)
+            || !Guid.TryParse(principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var userId))
+            return Unauthorized(new { message = "Refresh token is invalid or expired." });
+        var user = await db.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+            return Unauthorized(new { message = "Account no longer exists." });
+        return Ok(CreateCookieSession(user));
     }
 
     [Authorize]
@@ -111,6 +140,7 @@ public sealed class AuthController(CrmDbContext db, CrmTokenService tokens) : Co
     [HttpGet("me")]
     public async Task<IActionResult> Me(CancellationToken cancellationToken)
     {
+        Response.Headers.CacheControl = "no-store";
         if (!Guid.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var userId))
             return Unauthorized();
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
@@ -121,6 +151,15 @@ public sealed class AuthController(CrmDbContext db, CrmTokenService tokens) : Co
     {
         var result = tokens.CreateTokens(user.Id, user.Email, user.FullName);
         return new { accessToken = result.AccessToken, refreshToken = result.RefreshToken, tokenType = "Bearer", expiresIn = 900 };
+    }
+
+    private bool IsCookieSessionRequest() => Request.Path.StartsWithSegments("/api/auth/session");
+
+    private object CreateCookieSession(User user)
+    {
+        var result = tokens.CreateTokens(user.Id, user.Email, user.FullName);
+        CrmSessionCookies.Set(HttpContext, environment, result.AccessToken, result.RefreshToken);
+        return new { user = new UserResponse(user.Id, user.Email, user.FullName, user.AvatarUrl) };
     }
 
     internal static string HashPassword(string password)

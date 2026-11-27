@@ -1,22 +1,60 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, useLocation } from 'react-router-dom'
 import AppRoutes from '@/routes'
 import type { AuthSession } from '@/types/auth'
+import { ApiError, getSession, logoutSession } from '@/services/auth'
 
 function App() {
+  return <BrowserRouter><AppContent /></BrowserRouter>
+}
+
+function AppContent() {
+  const { pathname } = useLocation()
   const [session, setSession] = useState<AuthSession | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
 
   useEffect(() => {
-    if (!session) return
+    let active = true
+    async function restore() {
+      try {
+        const result = await getSession()
+        if (active) setSession(result)
+      } catch (e) {
+        if (active && !(e instanceof ApiError && e.status === 401))
+          setError('Không thể kiểm tra phiên đăng nhập. Vui lòng thử lại.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    void restore()
+    return () => { active = false }
+  }, [retry])
 
-    const timer = setTimeout(() => setSession(null), session.tokens.expiresIn * 1000)
-    return () => clearTimeout(timer)
-  }, [session])
+  useEffect(() => {
+    const expire = () => setSession(null)
+    window.addEventListener('crm:session-expired', expire)
+    return () => window.removeEventListener('crm:session-expired', expire)
+  }, [])
+
+  async function logout() {
+    try {
+      await logoutSession()
+      setSession(null)
+      setError('')
+    } catch {
+      setError('Không thể đăng xuất. Vui lòng thử lại.')
+    }
+  }
 
   return (
-    <BrowserRouter>
-      <AppRoutes session={session} onLogin={setSession} onLogout={() => setSession(null)} />
-    </BrowserRouter>
+    <>
+      {pathname === '/' ? <AppRoutes session={session} onLogin={setSession} onLogout={() => void logout()} /> :
+        loading ? <p className="p-8 text-sm">Đang kiểm tra phiên đăng nhập...</p> :
+        error && !session ? <div role="alert" className="p-8 text-sm">{error} <button type="button" className="underline" onClick={() => { setError(''); setLoading(true); setRetry(value => value + 1) }}>Thử lại</button></div> :
+          <>{error && <p role="alert" className="bg-red-50 p-3 text-center text-sm text-red-700">{error}</p>}<AppRoutes session={session} onLogin={setSession} onLogout={() => void logout()} /></>}
+    </>
   )
 }
 

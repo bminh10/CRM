@@ -13,6 +13,45 @@ namespace CRM.Api.Controllers;
 [Route("api/workspaces")]
 public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
 {
+    [HttpPost("personal")]
+    public async Task<IActionResult> EnsurePersonalWorkspace(CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT id FROM users WHERE id = {userId} FOR UPDATE", cancellationToken);
+        if (!await db.Users.AnyAsync(x => x.Id == userId, cancellationToken))
+            return Unauthorized();
+
+        var existing = await db.Workspaces.AsNoTracking()
+            .Where(x => x.WorkspaceMembers.Any(member => member.UserId == userId))
+            .OrderBy(x => x.Name).ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (existing is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return Ok(ToResponse(existing));
+        }
+
+        var now = DateTime.UtcNow;
+        var workspace = new Workspace
+        {
+            Id = Guid.NewGuid(), Name = "Không gian cá nhân", CreatedBy = userId,
+            CreatedAt = now, UpdatedAt = now
+        };
+        db.Workspaces.Add(workspace);
+        db.WorkspaceMembers.Add(new WorkspaceMember
+        {
+            Id = Guid.NewGuid(), WorkspaceId = workspace.Id, UserId = userId,
+            Role = "owner", JoinedAt = now
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = workspace.Id }, ToResponse(workspace));
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create(CreateWorkspaceRequest request, CancellationToken cancellationToken)
     {

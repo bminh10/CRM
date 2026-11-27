@@ -3,8 +3,10 @@ import { ArrowRight, Eye, EyeOff, Layers3, LockKeyhole, Mail, ShieldCheck, Users
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { isAuthSession, type AuthSession } from '@/types/auth'
+import type { AuthSession } from '@/types/auth'
 import type { FormEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { ApiError, login } from '@/services/auth'
 
 function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
   const [email, setEmail] = useState('')
@@ -20,31 +22,12 @@ function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
     setError('')
     setLoading(true)
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
-      })
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          setError('Email hoặc mật khẩu không chính xác.')
-        } else if (response.status === 503) {
-          setError('Dịch vụ đăng nhập chưa được cấu hình. Vui lòng liên hệ quản trị viên.')
-        } else {
-          setError(`Không thể đăng nhập (mã lỗi ${response.status}). Vui lòng thử lại.`)
-        }
-        return
-      }
-
-      const result: unknown = await response.json()
-      if (!isAuthSession(result)) {
-        throw new Error('Invalid login response')
-      }
-      onLogin(result)
+      onLogin(await login(email.trim(), password))
       setPassword('')
-    } catch {
-      setError('Không thể kết nối hoặc nhận phản hồi hợp lệ từ máy chủ. Vui lòng thử lại.')
+    } catch (e) {
+      setError(e instanceof ApiError
+        ? e.status === 401 ? 'Email hoặc mật khẩu không chính xác.' : e.status === 503 ? 'Dịch vụ đăng nhập chưa được cấu hình. Vui lòng liên hệ quản trị viên.' : `Không thể đăng nhập (mã lỗi ${e.status}). Vui lòng thử lại.`
+        : 'Không thể kết nối hoặc nhận phản hồi hợp lệ từ máy chủ. Vui lòng thử lại.')
     } finally {
       setLoading(false)
     }
@@ -131,6 +114,8 @@ function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
                     {!loading && <ArrowRight className="size-4" aria-hidden="true" />}
                   </Button>
                 </form>
+                <p className="mt-6 text-center text-sm text-slate-500">Chưa có tài khoản? <Link to="/signup" className="font-semibold text-[#243d9a] hover:underline">Đăng ký</Link></p>
+                <p className="mt-3 text-center text-sm"><Link to="/" className="text-slate-500 hover:underline">Về trang chủ</Link></p>
               </div>
           </div>
           <p className="text-center text-xs text-slate-400">CRM · Không gian làm việc của bạn</p>

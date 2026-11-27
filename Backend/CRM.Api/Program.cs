@@ -25,6 +25,22 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+app.Use(async (context, next) =>
+{
+    var method = context.Request.Method;
+    var unsafeMethod = !HttpMethods.IsGet(method) && !HttpMethods.IsHead(method)
+        && !HttpMethods.IsOptions(method);
+    if (unsafeMethod
+        && (context.Request.Cookies.ContainsKey(CrmSessionCookies.AccessName)
+            || context.Request.Path.StartsWithSegments("/api/auth/session"))
+        && context.Request.Headers[CrmSessionCookies.RequestHeader] != "1")
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(new { message = "Missing session request header." });
+        return;
+    }
+    await next();
+});
 app.UseAuthentication();
 app.UseAuthorization();
 // Cấu hình Swagger UI

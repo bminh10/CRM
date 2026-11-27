@@ -98,10 +98,20 @@ public sealed class CrmBearerHandler(
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var authorization = Request.Headers.Authorization.ToString();
-        if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        string? token;
+        if (!string.IsNullOrEmpty(authorization))
+        {
+            if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                return Task.FromResult(AuthenticateResult.NoResult());
+            token = authorization["Bearer ".Length..].Trim();
+        }
+        else if (!Request.Cookies.TryGetValue(CrmSessionCookies.AccessName, out token))
+        {
             return Task.FromResult(AuthenticateResult.NoResult());
+        }
 
-        var token = authorization["Bearer ".Length..].Trim();
+        if (string.IsNullOrWhiteSpace(token))
+            return Task.FromResult(AuthenticateResult.NoResult());
         if (!tokens.TryValidate(token, "access", out var principal) || principal is null)
             return Task.FromResult(AuthenticateResult.Fail("Invalid or expired access token."));
 

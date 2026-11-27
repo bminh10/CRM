@@ -6,7 +6,7 @@ function DashboardPage({ user, onLogout }: { user: AuthUser; onLogout: () => voi
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f7f8fc] px-6 text-slate-900">
       <div className="w-full max-w-[400px]">
-        <div className="mb-6 flex size-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+        <div className="mb-6 flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-[#243d9a]">
           <ShieldCheck className="size-6" aria-hidden="true" />
         </div>
         <h1 className="text-3xl font-semibold tracking-tight">Đăng nhập thành công</h1>
