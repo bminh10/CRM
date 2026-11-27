@@ -6,6 +6,19 @@
 # dotenv files
 .env
 
+# Local databases and database backups
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.backup
+*.bak
+*.sql
+*.sql.gz
+*.dump.gz
+*.backup.gz
+!Backend/CRM.Api/Data/add_user_otp_columns.sql
+
 # User-specific files
 *.rsuser
 *.suo
