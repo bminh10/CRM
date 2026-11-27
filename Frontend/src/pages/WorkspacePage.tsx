@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
-import { ArrowUpRight, BarChart3, Building2, CalendarDays, CheckSquare, GitBranch, Layers3, LogOut, Target, UserRound, UsersRound } from 'lucide-react'
+import { ArrowUpRight, BarChart3, Building2, CalendarDays, CheckSquare, ChevronDown, GitBranch, Layers3, LogOut, Target, UserRound, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import InvitationInbox from '@/components/InvitationInbox'
 import { ensurePersonalWorkspace, getStatistics, listWorkspaces } from '@/services/crm'
@@ -18,7 +18,6 @@ const links = [
   { to: '/dashboard/tasks', label: 'Công việc', icon: CheckSquare },
   { to: '/dashboard/calendar', label: 'Lịch làm việc', icon: CalendarDays },
   { to: '/dashboard/members', label: 'Thành viên', icon: UsersRound },
-  { to: '/dashboard/profile', label: 'Hồ sơ', icon: UserRound },
 ]
 
 function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
@@ -28,6 +27,8 @@ function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: 
   const [workspaceId, setWorkspaceId] = useState(() => searchParams.get('workspaceId') ?? '')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const profileMenuRef = useRef<HTMLDivElement>(null)
 
   const loadWorkspaces = useCallback(async () => {
     setLoading(true)
@@ -42,7 +43,25 @@ function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: 
   }, [])
 
   useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
-  const currentPage = links.find(link => link.to === location.pathname)?.label ?? 'Workspace'
+  useEffect(() => {
+    if (!profileMenuOpen) return
+    function closeOnOutside(event: PointerEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node))
+        setProfileMenuOpen(false)
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setProfileMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [profileMenuOpen])
+  const currentPage = location.pathname === '/dashboard/profile'
+    ? 'Hồ sơ'
+    : links.find(link => link.to === location.pathname)?.label ?? 'Workspace'
   const initials = session.user.fullName.trim().split(/\s+/).slice(-2).map(part => part[0]).join('').toUpperCase()
 
   return <div className="min-h-screen bg-[#eef2f8] text-[#17264a] lg:pl-16">
@@ -55,7 +74,23 @@ function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: 
       <Link to="/workspaces" className="mr-1 text-lg font-bold tracking-tight text-[#101c43]">CRM<span className="text-[#5268b0]">.</span></Link>
       <label className="sr-only" htmlFor="workspace-select">Chọn workspace</label><select id="workspace-select" value={workspaceId} onChange={e => { setWorkspaceId(e.target.value); setSearchParams({ workspaceId: e.target.value }) }} className="max-w-48 rounded-full border border-[#e3eaf4] bg-white px-3 py-2 text-xs font-medium text-[#243d9a]">{workspaces.length === 0 && <option value="">Đang tải workspace</option>}{workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
       <span className="hidden text-sm text-[#9aa8bb] md:inline">/</span><span className="hidden text-sm text-[#718096] md:inline">{currentPage}</span>
-      <div className="ml-auto flex items-center gap-2"><InvitationInbox onAccepted={() => void loadWorkspaces()} /><span className="grid size-9 place-items-center rounded-full bg-[#e6edff] text-xs font-bold text-[#243d9a]">{initials}</span><span className="hidden max-w-36 truncate text-sm font-semibold sm:inline">{session.user.fullName}</span><Button variant="ghost" size="icon" aria-label="Đăng xuất" onClick={onLogout} className="text-[#718096] lg:hidden"><LogOut className="size-4" /></Button></div>
+      <div className="ml-auto flex items-center gap-2">
+        <InvitationInbox onAccepted={() => void loadWorkspaces()} />
+        <div ref={profileMenuRef} className="relative">
+          <Button type="button" variant="ghost" aria-haspopup="menu" aria-expanded={profileMenuOpen} aria-label="Mở menu người dùng" onClick={() => setProfileMenuOpen(open => !open)} className="h-10 gap-2 px-2 text-[#52627c]">
+            <span className="grid size-8 place-items-center rounded-full bg-[#e6edff] text-xs font-bold text-[#243d9a]">{initials}</span>
+            <span className="hidden max-w-36 truncate text-sm font-semibold sm:inline">{session.user.fullName}</span>
+            <ChevronDown className="size-4" />
+          </Button>
+          {profileMenuOpen && <div role="menu" aria-label="Menu người dùng" className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-[#e1e8f2] bg-white py-1 shadow-lg">
+            <div className="border-b border-[#edf1f7] px-4 py-3"><p className="truncate text-sm font-semibold text-[#17264a]">{session.user.fullName}</p><p className="mt-0.5 text-xs text-[#8998ae]">Tài khoản CRM</p></div>
+            <Link to="/dashboard/profile" role="menuitem" onClick={() => setProfileMenuOpen(false)} className="flex items-center gap-2 px-4 py-3 text-sm text-[#42536e] hover:bg-[#f4f6fb]">
+              <UserRound className="size-4" /> Hồ sơ và bảo mật
+            </Link>
+          </div>}
+        </div>
+        <Button variant="ghost" size="icon" aria-label="Đăng xuất" onClick={onLogout} className="text-[#718096] lg:hidden"><LogOut className="size-4" /></Button>
+      </div>
     </header>
     <main className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6">
       {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} <button type="button" className="underline" onClick={() => void loadWorkspaces()}>Thử lại</button></div>}

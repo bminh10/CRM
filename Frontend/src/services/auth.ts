@@ -59,4 +59,11 @@ export function changePassword(email: string, code: string, newPassword: string)
   })
 }
 
+export function resetPassword(email: string, code: string, newPassword: string) {
+  return api<{ message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, code, newPassword }),
+  })
+}
+
 export { ApiError, logoutSession } from './api'

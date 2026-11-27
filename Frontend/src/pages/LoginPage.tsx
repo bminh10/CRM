@@ -6,20 +6,25 @@ import { Label } from '@/components/ui/label'
 import type { AuthSession } from '@/types/auth'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ApiError, login } from '@/services/auth'
+import { ApiError, login, resetPassword } from '@/services/auth'
 
 function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
+  const [resetCode, setResetCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (loading) return
 
-    setError('')
+    setError(''); setMessage('')
     setLoading(true)
     try {
       onLogin(await login(email.trim(), password))
@@ -31,6 +36,34 @@ function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (loading) return
+    if (newPassword.length < 12) { setError('Mật khẩu mới cần ít nhất 12 ký tự.'); return }
+    if (newPassword !== confirmPassword) { setError('Mật khẩu xác nhận không khớp.'); return }
+
+    setError(''); setMessage('')
+    setLoading(true)
+    try {
+      const result = await resetPassword(email.trim(), resetCode, newPassword)
+      setMessage(result.message)
+      setIsResetting(false)
+      setPassword(''); setResetCode(''); setNewPassword(''); setConfirmPassword('')
+    } catch (e) {
+      setError(e instanceof Error
+        ? e.message
+        : 'Không thể đặt lại mật khẩu. Hãy kiểm tra email và mã OTP rồi thử lại.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggleResetMode(reset: boolean) {
+    setIsResetting(reset)
+    setError(''); setMessage('')
+    setResetCode(''); setNewPassword(''); setConfirmPassword('')
   }
 
   return (
@@ -84,13 +117,15 @@ function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
                 <div className="mb-6 flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-[#243d9a]">
                   <LockKeyhole className="size-6" aria-hidden="true" />
                 </div>
-                <p className="mb-2 text-xs font-semibold tracking-[0.16em] text-[#5268b0] uppercase">Chào mừng trở lại</p>
-                <h2 className="text-3xl font-semibold tracking-tight">Đăng nhập</h2>
+                <p className="mb-2 text-xs font-semibold tracking-[0.16em] text-[#5268b0] uppercase">{isResetting ? 'Khôi phục tài khoản' : 'Chào mừng trở lại'}</p>
+                <h2 className="text-3xl font-semibold tracking-tight">{isResetting ? 'Quên mật khẩu' : 'Đăng nhập'}</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-500">
-                  Nhập thông tin tài khoản để tiếp tục vào không gian làm việc của bạn.
+                  {isResetting
+                    ? 'Nhập email tài khoản, mã 6 số trong ứng dụng Authenticator và mật khẩu mới.'
+                    : 'Nhập thông tin tài khoản để tiếp tục vào không gian làm việc của bạn.'}
                 </p>
 
-                <form className="mt-8 space-y-5" onSubmit={handleLogin}>
+                <form className="mt-8 space-y-5" onSubmit={isResetting ? handleResetPassword : handleLogin}>
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-sm font-medium text-slate-700">Email</Label>
                     <div className="relative">
@@ -98,7 +133,7 @@ function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
                       <Input id="email" type="email" name="email" autoComplete="email" placeholder="ban@congty.com" maxLength={255} required value={email} onChange={(event) => setEmail(event.target.value)} className="h-11 bg-white pl-10" />
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  {!isResetting && <div className="space-y-2">
                     <Label htmlFor="password" className="text-sm font-medium text-slate-700">Mật khẩu</Label>
                     <div className="relative">
                       <LockKeyhole className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
@@ -107,14 +142,33 @@ function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
                         {showPassword ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
                       </button>
                     </div>
-                  </div>
+                    <div className="flex justify-end"><button type="button" onClick={() => toggleResetMode(true)} className="text-sm font-medium text-[#243d9a] hover:underline">Quên mật khẩu?</button></div>
+                  </div>}
+                  {isResetting && <>
+                    <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm leading-5 text-[#52627c]">Chỉ dùng được với tài khoản đã thiết lập OTP trong Hồ sơ. Mã Authenticator gồm 6 chữ số.</p>
+                    <div className="space-y-2">
+                      <Label htmlFor="reset-code">Mã OTP</Label>
+                      <Input id="reset-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" placeholder="Nhập mã 6 số" required value={resetCode} onChange={event => setResetCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className="h-11 bg-white text-center font-mono tracking-[.35em]" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-password">Mật khẩu mới</Label>
+                      <Input id="new-password" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required value={newPassword} onChange={event => setNewPassword(event.target.value)} className="h-11 bg-white" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirm-new-password">Xác nhận mật khẩu mới</Label>
+                      <Input id="confirm-new-password" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} className="h-11 bg-white" />
+                    </div>
+                  </>}
                   {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+                  {message && <p role="status" className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{message}</p>}
                   <Button type="submit" disabled={loading} className="h-11 w-full bg-[#243d9a] text-white hover:bg-[#1c327f]">
-                    {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+                    {loading ? (isResetting ? 'Đang đặt lại...' : 'Đang đăng nhập...') : (isResetting ? 'Đặt lại mật khẩu' : 'Đăng nhập')}
                     {!loading && <ArrowRight className="size-4" aria-hidden="true" />}
                   </Button>
                 </form>
-                <p className="mt-6 text-center text-sm text-slate-500">Chưa có tài khoản? <Link to="/signup" className="font-semibold text-[#243d9a] hover:underline">Đăng ký</Link></p>
+                {isResetting
+                  ? <p className="mt-6 text-center text-sm text-slate-500"><button type="button" onClick={() => toggleResetMode(false)} className="font-semibold text-[#243d9a] hover:underline">Quay lại đăng nhập</button></p>
+                  : <p className="mt-6 text-center text-sm text-slate-500">Chưa có tài khoản? <Link to="/signup" className="font-semibold text-[#243d9a] hover:underline">Đăng ký</Link></p>}
                 <p className="mt-3 text-center text-sm"><Link to="/" className="text-slate-500 hover:underline">Về trang chủ</Link></p>
               </div>
           </div>

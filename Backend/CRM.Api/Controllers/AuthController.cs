@@ -131,18 +131,48 @@ public sealed class AuthController(
     }
 
     [AllowAnonymous]
-    [HttpPost("forgot-password")]
-    public IActionResult ForgotPassword() => StatusCode(StatusCodes.Status501NotImplemented, new
-    {
-        message = "Password reset requires a configured email sender and persistent, single-use reset token storage."
-    });
-
-    [AllowAnonymous]
+    [EnableRateLimiting("otp")]
     [HttpPost("reset-password")]
-    public IActionResult ResetPassword() => StatusCode(StatusCodes.Status501NotImplemented, new
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
     {
-        message = "Password reset requires persistent, single-use reset token storage."
-    });
+        Response.Headers.CacheControl = "no-store";
+        if (string.IsNullOrWhiteSpace(request.Email) || request.Email.Length > 255
+            || string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length is < 12 or > 1024)
+            return BadRequest(new { message = "Email hợp lệ và mật khẩu mới từ 12 đến 1024 ký tự là bắt buộc." });
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        if (!IsValidEmail(email))
+            return BadRequest(new { message = "Email hoặc mã OTP không hợp lệ." });
+        var user = await db.Users.SingleOrDefaultAsync(x => x.Email.ToLower() == email, cancellationToken);
+        if (user?.OtpSecret is null)
+            return BadRequest(new { message = "Email hoặc mã OTP không hợp lệ. Tài khoản cần thiết lập OTP trước." });
+
+        string secret;
+        try
+        {
+            secret = otpProtector.Unprotect(user.OtpSecret);
+        }
+        catch (CryptographicException)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "Không thể đọc cấu hình OTP. Vui lòng liên hệ quản trị viên." });
+        }
+        if (!TotpService.TryVerify(secret, request.Code, DateTimeOffset.UtcNow, out var matchedStep)
+            || matchedStep <= (user.OtpLastUsedStep ?? -1))
+            return BadRequest(new { message = "Email hoặc mã OTP không hợp lệ, hoặc mã đã được sử dụng." });
+
+        var now = DateTime.UtcNow;
+        var updated = await db.Users
+            .Where(x => x.Id == user.Id && x.OtpSecret == user.OtpSecret
+                && (x.OtpLastUsedStep == null || x.OtpLastUsedStep < matchedStep))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Password, HashPassword(request.NewPassword))
+                .SetProperty(x => x.OtpLastUsedStep, (long?)matchedStep)
+                .SetProperty(x => x.UpdateAt, now), cancellationToken);
+        if (updated == 0)
+            return BadRequest(new { message = "Email hoặc mã OTP không hợp lệ, hoặc mã đã được sử dụng." });
+        return Ok(new { message = "Đã đặt lại mật khẩu. Bạn có thể đăng nhập bằng mật khẩu mới." });
+    }
 
     [Authorize]
     [EnableRateLimiting("otp")]
@@ -346,4 +376,5 @@ public sealed record SetupOtpRequest(string Email);
 public sealed record SetupOtpResponse(string Secret, string ProvisioningUri, DateTime ExpiresAt);
 public sealed record VerifyOtpSetupRequest(string Email, string Code);
 public sealed record ChangePasswordRequest(string Email, string Code, string NewPassword);
+public sealed record ResetPasswordRequest(string Email, string Code, string NewPassword);
 public sealed record UserResponse(Guid Id, string Email, string FullName, string? AvatarUrl);

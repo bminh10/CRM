@@ -64,16 +64,10 @@ Content-Type: application/json
 {"refreshToken":"replace-with-refresh-token"}
 
 ###
-POST {{baseUrl}}/api/auth/forgot-password
-Content-Type: application/json
-
-{"email":"new.user@example.com"}
-
-###
 POST {{baseUrl}}/api/auth/reset-password
 Content-Type: application/json
 
-{"token":"replace-with-reset-token","newPassword":"ReplaceWithAnotherLongPassword123!"}
+{"email":"new.user@example.com","code":"123456","newPassword":"ReplaceWithAnotherLongPassword123!"}
 
 ###
 GET {{baseUrl}}/api/auth/me

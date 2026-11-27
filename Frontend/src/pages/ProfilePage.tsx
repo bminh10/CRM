@@ -106,7 +106,7 @@ function ProfilePage() {
         {!profile.isOtpConfigured && setup && <div className="mt-5 space-y-5">
           <div className="rounded-xl border border-[#e2e8f4] bg-[#f8faff] p-4">
             <p className="text-sm font-medium text-[#243d9a]">Thêm CRM vào ứng dụng Authenticator</p>
-            <p className="mt-2 text-xs leading-5 text-[#718096]">Nhập khóa bên dưới thủ công hoặc dùng URI provisioning nếu ứng dụng hỗ trợ. Khóa chỉ hiển thị trong bước thiết lập này.</p>
+            <p className="mt-2 text-xs leading-5 text-[#718096]">Trong Google Authenticator, nhấn dấu + → “Nhập khóa thiết lập”. Dán khóa bên dưới, chọn loại khóa dựa trên thời gian (Time based), rồi nhập mã 6 số ứng dụng tạo ra để xác nhận. Không nhập URI vào ô khóa.</p>
             <Label htmlFor="otp-secret" className="mt-4 block">Khóa thiết lập</Label>
             <Input id="otp-secret" readOnly value={setup.secret} className="mt-1 bg-white font-mono tracking-widest" />
             <Label htmlFor="otp-uri" className="mt-3 block">URI provisioning</Label>
