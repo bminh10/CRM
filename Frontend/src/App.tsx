@@ -53,7 +53,7 @@ function AppContent() {
 
   if (loading) return <SessionStatus />
   if (error && !session) return <SessionStatus error={error} onRetry={() => { setError(''); setLoading(true); setRetry(value => value + 1) }} />
-  return <>{error && <p role="alert" className="bg-red-50 p-3 text-center text-sm text-red-700">{error}</p>}<AppRoutes session={session} onLogin={setSession} onLogout={() => void logout()} /></>
+  return <>{error && <p role="alert" className="bg-red-50 p-3 text-center text-sm text-red-700">{error}</p>}<AppRoutes session={session} onLogin={setSession} onLogout={() => void logout()} onProfileUpdated={fullName => setSession(current => current ? { ...current, user: { ...current.user, fullName } } : current)} /></>
 }
 
 export default App

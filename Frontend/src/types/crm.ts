@@ -1,6 +1,7 @@
 export type Value = string | number | boolean | null
 export type RecordItem = { id: string; [key: string]: Value | string[] }
-export interface Workspace { id: string; name: string }
+export type WorkspaceRole = 'owner' | 'editor' | 'viewer'
+export interface Workspace { id: string; name: string; description?: string | null; role: WorkspaceRole; isArchived: boolean }
 export interface Invitation { id: string; workspaceId: string; email: string; status: string; expiresAt: string; token?: string | null }
 export interface IncomingInvitation {
   id: string

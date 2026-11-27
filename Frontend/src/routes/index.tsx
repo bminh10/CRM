@@ -9,10 +9,11 @@ import GuestRoute from './GuestRoute'
 import ProtectedRoute from './ProtectedRoute'
 import type { AuthSession } from '@/types/auth'
 
-function AppRoutes({ session, onLogin, onLogout }: {
+function AppRoutes({ session, onLogin, onLogout, onProfileUpdated }: {
   session: AuthSession | null
   onLogin: (session: AuthSession) => void
   onLogout: () => void
+  onProfileUpdated: (fullName: string) => void
 }) {
   return (
     <Routes>
@@ -24,7 +25,7 @@ function AppRoutes({ session, onLogin, onLogout }: {
       </Route>
       <Route element={<ProtectedRoute session={session} />}>
         <Route path="/workspaces" element={<WorkspaceHub session={session} onLogout={onLogout} />} />
-        <Route path="/dashboard/*" element={session && <WorkspacePage session={session} onLogout={onLogout} />} />
+        <Route path="/dashboard/*" element={session && <WorkspacePage session={session} onLogout={onLogout} onProfileUpdated={onProfileUpdated} />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

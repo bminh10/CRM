@@ -4,10 +4,13 @@
 
 Before deploying the OTP feature, apply `Backend/CRM.Api/Data/add_user_otp_columns.sql` to the PostgreSQL database. The API encrypts authenticator secrets with ASP.NET Core Data Protection. In production, configure `DataProtection__KeysPath` to a persistent, access-controlled directory (shared by API instances); losing the key ring makes saved OTP secrets unreadable.
 
+Apply `Backend/CRM.Api/Data/add_workspace_archived_column.sql` to add workspace archiving support. Archiving preserves the workspace and its data; workspace owners can restore it from the workspace picker.
+
 For the local `crm-local-postgres` container, run this once from the repository root in PowerShell:
 
 ```powershell
 Get-Content -Raw .\Backend\CRM.Api\Data\add_user_otp_columns.sql | docker exec -i crm-local-postgres psql -X -v ON_ERROR_STOP=1 -U crm_local -d crm_local
+Get-Content -Raw .\Backend\CRM.Api\Data\add_workspace_archived_column.sql | docker exec -i crm-local-postgres psql -X -v ON_ERROR_STOP=1 -U crm_local -d crm_local
 ```
 
 The script adds nullable columns without changing existing user data. It fails if any of the columns already exist; inspect the schema before applying it to another database. Do not run it against a shared or production database without approval and a backup.

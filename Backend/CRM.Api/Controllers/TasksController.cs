@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using CRM.Api.Data;
 using CRM.Api.Models;
+using CRM.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -42,7 +43,7 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
         if (!TryUserId(out var userId))
             return Unauthorized();
         var items = await db.Tasks.AsNoTracking().Where(x =>
-                x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId)
+                !x.Workspace.IsArchived && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId)
                 && x.TaskAssignees.Any(a => a.UserId == userId))
             .OrderBy(x => x.DueDate)
             .Select(x => new TaskResponse(x.Id, x.WorkspaceId, x.OpportunityId, x.Title, x.Description,
@@ -79,7 +80,7 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
         var status = request.Status is null ? "todo" : NormalizeStatus(request.Status);
         if (status is null)
             return BadRequest(new { message = "Status must be todo, in_progress, done or cancelled." });
-        if (!await IsMember(request.WorkspaceId, userId, cancellationToken))
+        if (!await CanEdit(request.WorkspaceId, userId, cancellationToken))
             return NotFound();
         if (request.OpportunityId.HasValue && !await db.Opportunities.AnyAsync(
                 x => x.Id == request.OpportunityId && x.WorkspaceId == request.WorkspaceId, cancellationToken))
@@ -111,7 +112,7 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
             return Unauthorized();
         var task = await db.Tasks.Include(x => x.TaskAssignees)
             .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == request.WorkspaceId, cancellationToken);
-        if (task is null || !await IsMember(request.WorkspaceId, userId, cancellationToken))
+        if (task is null || !await CanEdit(request.WorkspaceId, userId, cancellationToken))
             return NotFound();
         if (string.IsNullOrWhiteSpace(request.Title)
             || request.StartDate.HasValue && request.DueDate.HasValue && request.StartDate > request.DueDate)
@@ -150,7 +151,7 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
         if (!TryUserId(out var userId))
             return Unauthorized();
         var task = await db.Tasks.SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId, cancellationToken);
-        if (task is null || !await IsMember(workspaceId, userId, cancellationToken))
+        if (task is null || !await CanEdit(workspaceId, userId, cancellationToken))
             return NotFound();
         db.Tasks.Remove(task);
         await db.SaveChangesAsync(cancellationToken);
@@ -166,7 +167,7 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
         if (status is null)
             return BadRequest(new { message = "Status must be todo, in_progress, done or cancelled." });
         var task = await db.Tasks.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (task is null || !await IsMember(task.WorkspaceId, userId, cancellationToken))
+        if (task is null || !await CanEdit(task.WorkspaceId, userId, cancellationToken))
             return NotFound();
         task.Status = status;
         task.UpdatedAt = DateTime.UtcNow;
@@ -176,7 +177,9 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
 
     private bool TryUserId(out Guid id) => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out id);
     private Task<bool> IsMember(Guid workspaceId, Guid userId, CancellationToken ct) =>
-        db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId, ct);
+        WorkspaceAccess.IsMemberAsync(db, workspaceId, userId, ct);
+    private Task<bool> CanEdit(Guid workspaceId, Guid userId, CancellationToken ct) =>
+        WorkspaceAccess.CanEditAsync(db, workspaceId, userId, ct);
     private async Task<bool> ValidAssignees(Guid workspaceId, List<Guid> ids, CancellationToken ct) =>
         await db.WorkspaceMembers.CountAsync(x => x.WorkspaceId == workspaceId && ids.Distinct().Contains(x.UserId), ct)
         == ids.Distinct().Count();

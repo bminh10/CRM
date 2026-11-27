@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using CRM.Api.Data;
 using CRM.Api.Models;
+using CRM.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -39,7 +40,8 @@ public sealed class CalendarEventsController(CrmDbContext db) : ControllerBase
         if (!TryUserId(out var userId))
             return Unauthorized();
         var items = await db.CalendarEvents.AsNoTracking()
-            .Where(x => x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId)
+            .Where(x => !x.Workspace.IsArchived
+                && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId)
                 && (x.CreatedBy == userId || x.CalendarEventAttendees.Any(a => a.UserId == userId)))
             .OrderBy(x => x.StartTime).Select(ToResponseExpression()).ToListAsync(cancellationToken);
         return Ok(items);
@@ -70,7 +72,8 @@ public sealed class CalendarEventsController(CrmDbContext db) : ControllerBase
         if (!TryUserId(out var userId))
             return Unauthorized();
         var item = await db.CalendarEvents.AsNoTracking()
-            .Where(x => x.Id == id && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId))
+            .Where(x => x.Id == id && !x.Workspace.IsArchived
+                && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId))
             .Select(ToResponseExpression()).SingleOrDefaultAsync(cancellationToken);
         return item is null ? NotFound() : Ok(item);
     }
@@ -83,7 +86,7 @@ public sealed class CalendarEventsController(CrmDbContext db) : ControllerBase
         if (request.WorkspaceId == Guid.Empty || string.IsNullOrWhiteSpace(request.Title)
             || request.EndTime <= request.StartTime)
             return BadRequest(new { message = "WorkspaceId, Title and an EndTime after StartTime are required." });
-        if (!await IsMember(request.WorkspaceId, userId, cancellationToken))
+        if (!await CanEdit(request.WorkspaceId, userId, cancellationToken))
             return NotFound();
         if (!await ValidRelations(request.WorkspaceId, request.CompanyId, request.OpportunityId, cancellationToken))
             return BadRequest(new { message = "Related company and opportunity must belong to this workspace." });
@@ -117,7 +120,7 @@ public sealed class CalendarEventsController(CrmDbContext db) : ControllerBase
         var item = await db.CalendarEvents.Include(x => x.CalendarEventAttendees)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (item is null || item.WorkspaceId != request.WorkspaceId
-            || !await IsMember(item.WorkspaceId, userId, cancellationToken))
+            || !await CanEdit(item.WorkspaceId, userId, cancellationToken))
             return NotFound();
         if (string.IsNullOrWhiteSpace(request.Title) || request.EndTime <= request.StartTime)
             return BadRequest(new { message = "Title is required and EndTime must follow StartTime." });
@@ -154,8 +157,11 @@ public sealed class CalendarEventsController(CrmDbContext db) : ControllerBase
         if (!TryUserId(out var userId))
             return Unauthorized();
         var item = await db.CalendarEvents.SingleOrDefaultAsync(
-            x => x.Id == id && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId), cancellationToken);
+            x => x.Id == id && !x.Workspace.IsArchived
+                && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId), cancellationToken);
         if (item is null)
+            return NotFound();
+        if (!await CanEdit(item.WorkspaceId, userId, cancellationToken))
             return NotFound();
         db.CalendarEvents.Remove(item);
         await db.SaveChangesAsync(cancellationToken);
@@ -164,7 +170,9 @@ public sealed class CalendarEventsController(CrmDbContext db) : ControllerBase
 
     private bool TryUserId(out Guid id) => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out id);
     private Task<bool> IsMember(Guid workspaceId, Guid userId, CancellationToken ct) =>
-        db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId, ct);
+        WorkspaceAccess.IsMemberAsync(db, workspaceId, userId, ct);
+    private Task<bool> CanEdit(Guid workspaceId, Guid userId, CancellationToken ct) =>
+        WorkspaceAccess.CanEditAsync(db, workspaceId, userId, ct);
 
     private async Task<bool> ValidRelations(Guid workspaceId, Guid? companyId, Guid? opportunityId, CancellationToken ct)
     {

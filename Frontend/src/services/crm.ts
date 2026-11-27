@@ -18,8 +18,21 @@ function endpoint(section: string) {
 }
 
 export function listWorkspaces() { return api<Workspace[]>('/workspaces') }
+export function listArchivedWorkspaces() { return api<Workspace[]>('/workspaces/archived') }
 export function createWorkspace(name: string, description: string) {
   return api<Workspace>('/workspaces', { method: 'POST', body: JSON.stringify({ name, description: description || null }) })
+}
+export function updateWorkspace(id: string, name: string, description: string) {
+  return api<Workspace>(`/workspaces/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, description: description || null }),
+  })
+}
+export function archiveWorkspace(id: string) {
+  return api<void>(`/workspaces/${id}`, { method: 'DELETE' })
+}
+export function restoreWorkspace(id: string) {
+  return api<Workspace>(`/workspaces/${id}/restore`, { method: 'POST' })
 }
 export function ensurePersonalWorkspace() {
   return api<Workspace>('/workspaces/personal', { method: 'POST' })
@@ -55,7 +68,7 @@ export function deleteRecord(section: string, workspaceId: string, id: string) {
   const path = config.path.replace('{workspaceId}', workspaceId)
   return api<void>(`${path}/${id}${config.queryOnItem ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, { method: 'DELETE' })
 }
-export function updateWorkspaceMemberRole(workspaceId: string, userId: string, role: 'owner' | 'editor' | 'viewer') {
+export function updateWorkspaceMemberRole(workspaceId: string, userId: string, role: 'editor' | 'viewer') {
   return api<void>(`/workspaces/${workspaceId}/members/${userId}/role`, {
     method: 'PUT',
     body: JSON.stringify({ role }),

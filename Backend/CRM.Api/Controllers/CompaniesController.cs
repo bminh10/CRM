@@ -2,6 +2,7 @@
 using CRM.Api.Business.Interface;
 using CRM.Api.Data;
 using CRM.Api.DTOs.Companies;
+using CRM.Api.Security;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -72,7 +73,7 @@ public class CompaniesController : ControllerBase
                 message = "WorkspaceId is required."
             });
         }
-        if (!await IsMember(request.WorkspaceId))
+        if (!await CanEdit(request.WorkspaceId))
             return NotFound();
 
         var company = await _companyService.CreateAsync(request);
@@ -90,7 +91,7 @@ public class CompaniesController : ControllerBase
         {
             return BadRequest(new { message = "WorkspaceId is required." });
         }
-        if (!await IsMember(workspaceId))
+        if (!await CanEdit(workspaceId))
             return NotFound();
 
         var company = await _companyService.UpdateAsync(id, workspaceId, request);
@@ -104,7 +105,7 @@ public class CompaniesController : ControllerBase
         {
             return BadRequest(new { message = "WorkspaceId is required." });
         }
-        if (!await IsMember(workspaceId))
+        if (!await CanEdit(workspaceId))
             return NotFound();
 
         var deleted = await _companyService.DeleteAsync(id, workspaceId);
@@ -115,6 +116,13 @@ public class CompaniesController : ControllerBase
     {
         if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
             return Task.FromResult(false);
-        return _db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId);
+        return WorkspaceAccess.IsMemberAsync(_db, workspaceId, userId);
+    }
+
+    private Task<bool> CanEdit(Guid workspaceId)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return Task.FromResult(false);
+        return WorkspaceAccess.CanEditAsync(_db, workspaceId, userId);
     }
 }

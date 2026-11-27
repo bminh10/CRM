@@ -18,6 +18,7 @@
 *.dump.gz
 *.backup.gz
 !Backend/CRM.Api/Data/add_user_otp_columns.sql
+!Backend/CRM.Api/Data/add_workspace_archived_column.sql
 
 # User-specific files
 *.rsuser

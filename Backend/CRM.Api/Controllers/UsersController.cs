@@ -26,7 +26,7 @@ public sealed class UsersController(CrmDbContext db) : ControllerBase
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
         return user is null
             ? Unauthorized()
-            : Ok(new UserProfileResponse(user.Email, user.FullName, user.OtpSecret is not null));
+            : Ok(new UserProfileResponse(user.Id, user.Email, user.FullName, user.AvatarUrl, user.OtpSecret is not null));
     }
 
     [HttpGet("{id:guid}")]
@@ -47,13 +47,28 @@ public sealed class UsersController(CrmDbContext db) : ControllerBase
             return Unauthorized();
         if (id != currentUserId)
             return Forbid();
+        return await UpdateUser(id, request, cancellationToken);
+    }
+
+    [HttpPut("profile")]
+    public async Task<IActionResult> UpdateProfile(UpdateUserRequest request, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+        return await UpdateUser(userId, request, cancellationToken);
+    }
+
+    private async Task<IActionResult> UpdateUser(Guid id, UpdateUserRequest request, CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(request.FullName))
             return BadRequest(new { message = "FullName is required." });
+        if (request.FullName.Trim().Length > 150 || request.AvatarUrl?.Length > 2048)
+            return BadRequest(new { message = "FullName or AvatarUrl exceeds the allowed length." });
         var user = await db.Users.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (user is null)
             return NotFound();
         user.FullName = request.FullName.Trim();
-        user.AvatarUrl = request.AvatarUrl;
+        user.AvatarUrl = string.IsNullOrWhiteSpace(request.AvatarUrl) ? null : request.AvatarUrl.Trim();
         user.UpdateAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(new UserResponse(user.Id, user.Email, user.FullName, user.AvatarUrl));
@@ -76,4 +91,4 @@ public sealed class UsersController(CrmDbContext db) : ControllerBase
 }
 
 public sealed record UpdateUserRequest(string FullName, string? AvatarUrl);
-public sealed record UserProfileResponse(string Email, string FullName, bool IsOtpConfigured);
+public sealed record UserProfileResponse(Guid Id, string Email, string FullName, string? AvatarUrl, bool IsOtpConfigured);

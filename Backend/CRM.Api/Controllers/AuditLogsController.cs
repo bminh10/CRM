@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using CRM.Api.Data;
+using CRM.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -45,7 +46,7 @@ public sealed class AuditLogsController(CrmDbContext db) : ControllerBase
             return Unauthorized();
         if (page < 1 || pageSize is < 1 or > 200)
             return BadRequest(new { message = "Valid page and pageSize are required." });
-        var query = db.AuditLogs.AsNoTracking().Where(x => x.UserId == userId);
+        var query = db.AuditLogs.AsNoTracking().Where(x => x.UserId == userId && !x.Workspace.IsArchived);
         var total = await query.CountAsync(cancellationToken);
         var items = await query.OrderByDescending(x => x.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize)
@@ -62,7 +63,8 @@ public sealed class AuditLogsController(CrmDbContext db) : ControllerBase
         if (!TryUserId(out var userId))
             return Unauthorized();
         var item = await db.AuditLogs.AsNoTracking()
-            .Where(x => x.Id == id && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId))
+            .Where(x => x.Id == id && !x.Workspace.IsArchived
+                && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId))
             .Select(x => new AuditLogResponse(x.Id, x.WorkspaceId, x.UserId,
                 x.User == null ? null : x.User.FullName, x.Action, x.EntityType, x.EntityId,
                 x.OldData, x.NewData, x.CreatedAt))
@@ -72,7 +74,7 @@ public sealed class AuditLogsController(CrmDbContext db) : ControllerBase
 
     private bool TryUserId(out Guid id) => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out id);
     private Task<bool> IsMember(Guid workspaceId, Guid userId, CancellationToken ct) =>
-        db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId, ct);
+        WorkspaceAccess.IsMemberAsync(db, workspaceId, userId, ct);
 }
 
 public sealed record AuditLogResponse(Guid Id, Guid WorkspaceId, Guid? UserId, string? UserName,

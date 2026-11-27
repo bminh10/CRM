@@ -1,5 +1,6 @@
 using CRM.Api.Data;
 using CRM.Api.Models;
+using CRM.Api.Security;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -65,7 +66,7 @@ public sealed class ContactsController : ControllerBase
     {
         if (request.WorkspaceId == Guid.Empty)
             return BadRequest(new { message = "WorkspaceId is required." });
-        if (!await IsMember(request.WorkspaceId))
+        if (!await CanEdit(request.WorkspaceId))
             return NotFound();
         if (request.CompanyId.HasValue && !await _db.Companies.AnyAsync(
                 x => x.Id == request.CompanyId && x.WorkspaceId == request.WorkspaceId))
@@ -97,7 +98,7 @@ public sealed class ContactsController : ControllerBase
     {
         if (workspaceId == Guid.Empty || request.WorkspaceId != workspaceId)
             return BadRequest(new { message = "WorkspaceId must match the request body." });
-        if (!await IsMember(workspaceId))
+        if (!await CanEdit(workspaceId))
             return NotFound();
         if (request.CompanyId.HasValue && !await _db.Companies.AnyAsync(
                 x => x.Id == request.CompanyId && x.WorkspaceId == workspaceId))
@@ -121,7 +122,7 @@ public sealed class ContactsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, [FromQuery] Guid workspaceId)
     {
-        if (workspaceId == Guid.Empty || !await IsMember(workspaceId))
+        if (workspaceId == Guid.Empty || !await CanEdit(workspaceId))
             return NotFound();
         var contact = await _db.Contacts.SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceId == workspaceId);
         if (contact is null)
@@ -135,7 +136,14 @@ public sealed class ContactsController : ControllerBase
     {
         if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
             return System.Threading.Tasks.Task.FromResult(false);
-        return _db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId);
+        return WorkspaceAccess.IsMemberAsync(_db, workspaceId, userId);
+    }
+
+    private System.Threading.Tasks.Task<bool> CanEdit(Guid workspaceId)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return System.Threading.Tasks.Task.FromResult(false);
+        return WorkspaceAccess.CanEditAsync(_db, workspaceId, userId);
     }
 }
 

@@ -20,7 +20,7 @@ const links = [
   { to: '/dashboard/members', label: 'Thành viên', icon: UsersRound },
 ]
 
-function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
+function WorkspacePage({ session, onLogout, onProfileUpdated }: { session: AuthSession; onLogout: () => void; onProfileUpdated: (fullName: string) => void }) {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
@@ -62,6 +62,7 @@ function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: 
   const currentPage = location.pathname === '/dashboard/profile'
     ? 'Hồ sơ'
     : links.find(link => link.to === location.pathname)?.label ?? 'Workspace'
+  const currentWorkspaceRole = workspaces.find(workspace => workspace.id === workspaceId)?.role ?? 'viewer'
   const initials = session.user.fullName.trim().split(/\s+/).slice(-2).map(part => part[0]).join('').toUpperCase()
 
   return <div className="min-h-screen bg-[#eef2f8] text-[#17264a] lg:pl-16">
@@ -94,7 +95,7 @@ function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: 
     </header>
     <main className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6">
       {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} <button type="button" className="underline" onClick={() => void loadWorkspaces()}>Thử lại</button></div>}
-      {loading ? <p className="p-6 text-sm text-slate-500">Đang tải workspace...</p> : <Routes><Route index element={workspaceId ? <Overview workspaceId={workspaceId} userName={session.user.fullName} /> : null} /><Route path="profile" element={<ProfilePage />} /><Route path=":section" element={workspaceId ? <RecordsPage key={`${workspaceId}:${location.pathname}`} workspaceId={workspaceId} /> : null} /></Routes>}
+      {loading ? <p className="p-6 text-sm text-slate-500">Đang tải workspace...</p> : <Routes><Route index element={workspaceId ? <Overview workspaceId={workspaceId} userName={session.user.fullName} /> : null} /><Route path="profile" element={<ProfilePage onProfileUpdated={onProfileUpdated} />} /><Route path=":section" element={workspaceId ? <RecordsPage key={`${workspaceId}:${location.pathname}`} workspaceId={workspaceId} userRole={currentWorkspaceRole} /> : null} /></Routes>}
     </main>
   </div>
 }

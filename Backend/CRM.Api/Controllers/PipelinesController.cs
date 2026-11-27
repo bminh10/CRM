@@ -1,5 +1,6 @@
 using CRM.Api.Data;
 using CRM.Api.Models;
+using CRM.Api.Security;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -50,7 +51,7 @@ public sealed class PipelinesController : ControllerBase
     {
         if (request.WorkspaceId == Guid.Empty || string.IsNullOrWhiteSpace(request.Name))
             return BadRequest(new { message = "WorkspaceId and Name are required." });
-        if (!await IsMember(request.WorkspaceId))
+        if (!await CanEdit(request.WorkspaceId))
             return NotFound();
 
         var now = DateTime.UtcNow;
@@ -77,7 +78,7 @@ public sealed class PipelinesController : ControllerBase
         var pipeline = await _db.Pipelines.SingleOrDefaultAsync(x => x.Id == id);
         if (pipeline is null)
             return NotFound();
-        if (!await IsMember(pipeline.WorkspaceId))
+        if (!await CanEdit(pipeline.WorkspaceId))
             return NotFound();
         if (pipeline.WorkspaceId != request.WorkspaceId)
             return BadRequest(new { message = "WorkspaceId cannot be changed." });
@@ -98,7 +99,7 @@ public sealed class PipelinesController : ControllerBase
         var pipeline = await _db.Pipelines.SingleOrDefaultAsync(x => x.Id == id);
         if (pipeline is null)
             return NotFound();
-        if (!await IsMember(pipeline.WorkspaceId))
+        if (!await CanEdit(pipeline.WorkspaceId))
             return NotFound();
         if (await _db.Opportunities.AnyAsync(x => x.PipelineId == id))
             return Conflict(new { message = "Pipeline cannot be deleted while it contains opportunities." });
@@ -129,7 +130,7 @@ public sealed class PipelinesController : ControllerBase
             return BadRequest(new { message = "Name and a non-negative Position are required." });
         var pipelineWorkspaceId = await _db.Pipelines.Where(x => x.Id == pipelineId)
             .Select(x => (Guid?)x.WorkspaceId).SingleOrDefaultAsync();
-        if (!pipelineWorkspaceId.HasValue || !await IsMember(pipelineWorkspaceId.Value))
+        if (!pipelineWorkspaceId.HasValue || !await CanEdit(pipelineWorkspaceId.Value))
             return NotFound();
         if (await _db.PipelineStages.AnyAsync(x => x.PipelineId == pipelineId && x.Position == request.Position))
             return Conflict(new { message = "Position is already used in this pipeline." });
@@ -153,7 +154,7 @@ public sealed class PipelinesController : ControllerBase
     {
         var pipelineWorkspaceId = await _db.Pipelines.Where(x => x.Id == pipelineId)
             .Select(x => (Guid?)x.WorkspaceId).SingleOrDefaultAsync();
-        if (!pipelineWorkspaceId.HasValue || !await IsMember(pipelineWorkspaceId.Value))
+        if (!pipelineWorkspaceId.HasValue || !await CanEdit(pipelineWorkspaceId.Value))
             return NotFound();
         if (request.StageIds.Count == 0 || request.StageIds.Distinct().Count() != request.StageIds.Count)
             return BadRequest(new { message = "StageIds must be non-empty and unique." });
@@ -176,7 +177,14 @@ public sealed class PipelinesController : ControllerBase
     {
         if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
             return System.Threading.Tasks.Task.FromResult(false);
-        return _db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId);
+        return WorkspaceAccess.IsMemberAsync(_db, workspaceId, userId);
+    }
+
+    private System.Threading.Tasks.Task<bool> CanEdit(Guid workspaceId)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return System.Threading.Tasks.Task.FromResult(false);
+        return WorkspaceAccess.CanEditAsync(_db, workspaceId, userId);
     }
 }
 
@@ -204,7 +212,7 @@ public sealed class PipelineStagesController : ControllerBase
         var stage = await _db.PipelineStages.SingleOrDefaultAsync(x => x.Id == id);
         if (stage is null)
             return NotFound();
-        if (!await IsMember(stage.PipelineId))
+        if (!await CanEdit(stage.PipelineId))
             return NotFound();
         if (string.IsNullOrWhiteSpace(request.Name) || request.Position < 0)
             return BadRequest(new { message = "Name and a non-negative Position are required." });
@@ -225,7 +233,7 @@ public sealed class PipelineStagesController : ControllerBase
         var stage = await _db.PipelineStages.SingleOrDefaultAsync(x => x.Id == id);
         if (stage is null)
             return NotFound();
-        if (!await IsMember(stage.PipelineId))
+        if (!await CanEdit(stage.PipelineId))
             return NotFound();
         if (await _db.Opportunities.AnyAsync(x => x.StageId == id))
             return Conflict(new { message = "Stage cannot be deleted while it contains opportunities." });
@@ -239,7 +247,16 @@ public sealed class PipelineStagesController : ControllerBase
         if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
             return false;
         return await _db.Pipelines.AnyAsync(x => x.Id == pipelineId
-            && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId));
+            && x.Workspace.WorkspaceMembers.Any(member => member.UserId == userId && !member.Workspace.IsArchived));
+    }
+
+    private async Task<bool> CanEdit(Guid pipelineId)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return false;
+        var workspaceId = await _db.Pipelines.Where(x => x.Id == pipelineId)
+            .Select(x => (Guid?)x.WorkspaceId).SingleOrDefaultAsync();
+        return workspaceId.HasValue && await WorkspaceAccess.CanEditAsync(_db, workspaceId.Value, userId);
     }
 }
 

@@ -9,6 +9,7 @@ interface PipelineBoardProps {
   workspaceId: string
   pipelines: RecordItem[]
   revision: number
+  editable: boolean
 }
 
 const stageStyles = [
@@ -20,7 +21,7 @@ const stageStyles = [
 
 const currency = new Intl.NumberFormat('vi-VN')
 
-function PipelineBoard({ workspaceId, pipelines, revision }: PipelineBoardProps) {
+function PipelineBoard({ workspaceId, pipelines, revision, editable }: PipelineBoardProps) {
   const [selectedId, setSelectedId] = useState('')
   const [selectedStageId, setSelectedStageId] = useState('')
   const [stages, setStages] = useState<Option[]>([])
@@ -154,7 +155,7 @@ function PipelineBoard({ workspaceId, pipelines, revision }: PipelineBoardProps)
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#edf1f8] pt-3">
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-[#243d9a]"><CircleDollarSign className="size-4" /> {currency.format(item.expectedValue)} đ</span>
                   <label className="flex items-center gap-1.5 text-xs text-[#8290a6]"><span className="sr-only">Chuyển {item.title} sang giai đoạn</span><MoveRight className="size-3.5" />
-                    <select aria-label={`Chuyển ${item.title} sang giai đoạn`} value={item.stageId} disabled={!!moving} onChange={event => void move(item.id, event.target.value)} className="max-w-36 rounded-md border border-[#e1e7f0] bg-white px-2 py-1.5 text-xs text-[#52627c] disabled:opacity-50">
+                        <select aria-label={`Chuyển ${item.title} sang giai đoạn`} value={item.stageId} disabled={!editable || !!moving} onChange={event => void move(item.id, event.target.value)} className="max-w-36 rounded-md border border-[#e1e7f0] bg-white px-2 py-1.5 text-xs text-[#52627c] disabled:opacity-50">
                       {stages.map(destination => <option key={destination.id} value={destination.id}>{destination.name}</option>)}
                     </select>
                   </label>

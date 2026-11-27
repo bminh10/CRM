@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { addStage as addStageRequest, deleteRecord, deleteStage, listRecords, listStages, removeWorkspaceMember, renameStage, reorderStages, saveRecord, updateWorkspaceMemberRole } from '@/services/crm'
-import type { RecordItem } from '@/types/crm'
+import type { RecordItem, WorkspaceRole } from '@/types/crm'
 import ActivityForm from './ActivityForm'
 import OpportunityForm from './OpportunityForm'
 
@@ -31,7 +31,7 @@ const sections: Record<string, Section> = {
   calendar: { title: 'Lịch làm việc', description: 'Các cuộc hẹn online và offline.', paginated: true, editable: true, columns: ['title', 'eventType', 'startTime', 'location'], fields: [
     { key: 'title', label: 'Cuộc hẹn', required: true }, { key: 'description', label: 'Mô tả' }, { key: 'eventType', label: 'Hình thức' }, { key: 'companyId', label: 'ID công ty liên quan' }, { key: 'opportunityId', label: 'ID cơ hội liên quan' }, { key: 'startTime', label: 'Bắt đầu' }, { key: 'endTime', label: 'Kết thúc' }, { key: 'location', label: 'Địa điểm' }, { key: 'meetingUrl', label: 'Liên kết cuộc họp' }, { key: 'attendeeUserIds', label: 'ID người tham dự' }, { key: 'createdAt', label: 'Ngày tạo' }, { key: 'updatedAt', label: 'Cập nhật lần cuối' },
   ] },
-  members: { title: 'Thành viên', description: 'Quản lý vai trò và quyền truy cập của thành viên trong workspace.', editable: true, columns: ['fullName', 'email', 'role'], fields: [{ key: 'fullName', label: 'Họ và tên' }, { key: 'email', label: 'Email' }, { key: 'role', label: 'Vai trò', options: [{ value: 'owner', label: 'Chủ sở hữu' }, { value: 'editor', label: 'Có thể chỉnh sửa' }, { value: 'viewer', label: 'Chỉ xem' }] }] },
+  members: { title: 'Thành viên', description: 'Quản lý vai trò và quyền truy cập của thành viên trong workspace.', editable: true, columns: ['fullName', 'email', 'role'], fields: [{ key: 'fullName', label: 'Họ và tên' }, { key: 'email', label: 'Email' }, { key: 'role', label: 'Vai trò', options: [{ value: 'editor', label: 'Có thể chỉnh sửa' }, { value: 'viewer', label: 'Chỉ xem' }] }] },
 }
 
 const valueLabels: Record<string, string> = {
@@ -57,7 +57,7 @@ function displayValue(key: string, value: RecordItem[string]) {
   return String(value)
 }
 
-function RecordsPage({ workspaceId }: { workspaceId: string }) {
+function RecordsPage({ workspaceId, userRole }: { workspaceId: string; userRole: WorkspaceRole }) {
   const { section = '' } = useParams()
   const config = sections[section]
   const [items, setItems] = useState<RecordItem[]>([])
@@ -75,6 +75,9 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
   const [stageLoading, setStageLoading] = useState(false)
   const [stageRevision, setStageRevision] = useState(0)
   const requestId = useRef(0)
+  const canEditData = userRole === 'owner' || userRole === 'editor'
+  const canManageMembers = userRole === 'owner'
+  const canWrite = section === 'members' ? canManageMembers : canEditData
 
   const load = useCallback(async () => {
     if (!config) return
@@ -94,6 +97,11 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
   if (!config) return <p>Không tìm thấy trang.</p>
 
   function openForm(item?: RecordItem) {
+    if (section === 'members') {
+      if (!canManageMembers || !item || item.isWorkspaceCreator === true || item.role === 'owner') return
+    } else if (!canEditData) {
+      return
+    }
     setEditing(item ?? null)
     setForm(section === 'members'
       ? { role: item?.role?.toString() ?? 'viewer' }
@@ -110,7 +118,7 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
       if (section === 'members') {
         if (!editing) return
         const userId = String(editing.userId ?? editing.id)
-        await updateWorkspaceMemberRole(workspaceId, userId, form.role as 'owner' | 'editor' | 'viewer')
+        await updateWorkspaceMemberRole(workspaceId, userId, form.role as 'editor' | 'viewer')
         setShowForm(false)
         await load()
         return
@@ -126,6 +134,11 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
   }
 
   async function remove(item: RecordItem) {
+    if (section === 'members') {
+      if (!canManageMembers || item.isWorkspaceCreator === true || item.role === 'owner') return
+    } else if (!canEditData) {
+      return
+    }
     const message = section === 'members'
       ? 'Bạn có chắc muốn xóa thành viên này khỏi workspace?'
       : 'Bạn có chắc muốn xóa mục này?'
@@ -146,7 +159,7 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
   }
 
   async function changeStage(stage: RecordItem, action: 'rename' | 'delete' | 'up' | 'down') {
-    if (!stagesFor || saving) return
+    if (!canEditData || !stagesFor || saving) return
     const index = stages.findIndex(item => item.id === stage.id)
     let update: () => Promise<void> = () => deleteStage(stage.id)
     if (action === 'delete' && !window.confirm('Bạn có chắc muốn xóa giai đoạn này?')) return
@@ -172,7 +185,7 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
 
   async function addStage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!stagesFor || !stageName.trim() || saving) return
+    if (!canEditData || !stagesFor || !stageName.trim() || saving) return
     setSaving(true); setError('')
     try {
       const position = stages.reduce((max, stage) => Math.max(max, Number(stage.position)), -1) + 1
@@ -182,16 +195,16 @@ function RecordsPage({ workspaceId }: { workspaceId: string }) {
     finally { setSaving(false) }
   }
 
-  return <section><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold tracking-[.15em] text-[#5268b0]">KHÔNG GIAN LÀM VIỆC</p><h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#101c43]">{config.title}</h1><p className="mt-1 text-sm text-[#8998ae]">{config.description}</p></div><div className="flex gap-2"><Button variant="outline" onClick={() => { void load(); setStageRevision(current => current + 1) }}><RefreshCw /> Làm mới</Button>{(config.editable || section === 'tasks' || section === 'calendar') && <Button onClick={() => config.editable ? openForm() : setShowForm(true)} className="bg-[#243d9a] text-white hover:bg-[#1c327f]"><Plus /> Thêm mới</Button>}</div></div>
+  return <section><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold tracking-[.15em] text-[#5268b0]">KHÔNG GIAN LÀM VIỆC</p><h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#101c43]">{config.title}</h1><p className="mt-1 text-sm text-[#8998ae]">{config.description}</p></div><div className="flex gap-2"><Button variant="outline" onClick={() => { void load(); setStageRevision(current => current + 1) }}><RefreshCw /> Làm mới</Button>{canWrite && section !== 'members' && (config.editable || section === 'tasks' || section === 'calendar') && <Button onClick={() => config.editable ? openForm() : setShowForm(true)} className="bg-[#243d9a] text-white hover:bg-[#1c327f]"><Plus /> Thêm mới</Button>}</div></div>
     {!config.editable && section !== 'members' && <p className="mt-4 text-xs text-[#8493aa]">Hiện tại hỗ trợ xem và tạo mới; chỉnh sửa đang được phát triển.</p>}
     {error && <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
     {showForm && section === 'opportunities' && <OpportunityForm key={editing?.id ?? 'new'} workspaceId={workspaceId} item={editing} onSaved={() => { setShowForm(false); void load() }} onCancel={() => setShowForm(false)} />}
-    {showForm && section === 'members' && editing && <form onSubmit={submit} className="mt-6 rounded-2xl border border-[#e2e8f4] bg-white p-6"><h2 className="mb-1 text-lg font-semibold">Chỉnh sửa vai trò thành viên</h2><p className="mb-5 text-sm text-[#8998ae]">{String(editing.fullName)} · {String(editing.email)}</p><div className="max-w-sm space-y-2"><Label htmlFor="member-role">Vai trò</Label><select id="member-role" value={form.role ?? 'viewer'} onChange={e => setForm({ role: e.target.value })} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm"><option value="owner">Chủ sở hữu</option><option value="editor">Có thể chỉnh sửa</option><option value="viewer">Chỉ xem</option></select></div><div className="mt-5 flex gap-2"><Button disabled={saving} className="bg-[#243d9a] text-white hover:bg-[#1c327f]">{saving ? 'Đang lưu...' : 'Lưu vai trò'}</Button><Button type="button" variant="outline" onClick={() => setShowForm(false)}>Hủy</Button></div></form>}
+    {showForm && section === 'members' && editing && canManageMembers && editing.isWorkspaceCreator !== true && editing.role !== 'owner' && <form onSubmit={submit} className="mt-6 rounded-2xl border border-[#e2e8f4] bg-white p-6"><h2 className="mb-1 text-lg font-semibold">Chỉnh sửa vai trò thành viên</h2><p className="mb-5 text-sm text-[#8998ae]">{String(editing.fullName)} · {String(editing.email)}</p><div className="max-w-sm space-y-2"><Label htmlFor="member-role">Vai trò</Label><select id="member-role" value={form.role ?? 'viewer'} onChange={e => setForm({ role: e.target.value })} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm"><option value="editor">Có thể chỉnh sửa</option><option value="viewer">Chỉ xem</option></select></div><div className="mt-5 flex gap-2"><Button disabled={saving} className="bg-[#243d9a] text-white hover:bg-[#1c327f]">{saving ? 'Đang lưu...' : 'Lưu vai trò'}</Button><Button type="button" variant="outline" onClick={() => setShowForm(false)}>Hủy</Button></div></form>}
     {showForm && config.editable && section !== 'members' && section !== 'opportunities' && section !== 'tasks' && section !== 'calendar' && <form onSubmit={submit} className="mt-6 rounded-2xl border border-[#e2e8f4] bg-white p-6"><h2 className="mb-5 text-lg font-semibold">{editing ? 'Chỉnh sửa' : 'Thêm mới'} {config.title.toLowerCase()}</h2><div className="grid gap-4 sm:grid-cols-2">{config.fields.map(field => <div key={field.key} className="space-y-2"><Label htmlFor={`field-${field.key}`}>{field.label}{field.required && ' *'}</Label>{field.options ? <select id={`field-${field.key}`} value={form[field.key] ?? ''} onChange={e => setForm({ ...form, [field.key]: e.target.value })} className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm">{field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <Input id={`field-${field.key}`} type={field.type ?? 'text'} required={field.required} value={form[field.key] ?? ''} onChange={e => setForm({ ...form, [field.key]: e.target.value })} />}</div>)}</div><div className="mt-5 flex gap-2"><Button disabled={saving} className="bg-[#243d9a] text-white hover:bg-[#1c327f]">{saving ? 'Đang lưu...' : 'Lưu'}</Button><Button type="button" variant="outline" onClick={() => setShowForm(false)}>Hủy</Button></div></form>}
     {showForm && (section === 'tasks' || section === 'calendar') && <ActivityForm key={`${section}:${editing?.id ?? 'new'}`} workspaceId={workspaceId} kind={section} item={editing} onSaved={() => { setShowForm(false); void load() }} onCancel={() => setShowForm(false)} />}
-    {section === 'pipelines' && !loading && <div className="mx-auto mt-5 max-w-5xl"><PipelineBoard workspaceId={workspaceId} pipelines={items} revision={stageRevision} /></div>}
-    {section !== 'pipelines' ? <RecordWorkspace title={config.title} description={config.description} fields={config.fields} columns={config.columns} items={items} total={total} loading={loading} editable={config.editable} paginated={config.paginated} displayValue={displayValue} onEdit={openForm} onDelete={item => void remove(item)} /> :
-    <div className="mt-5 overflow-x-auto rounded-2xl bg-white"><div className="border-b border-[#edf1f8] px-5 py-4"><h2 className="font-semibold text-[#1e2d58]">Quản lý quy trình</h2><p className="mt-1 text-xs text-[#8998ae]">Tạo và sắp xếp các giai đoạn bán hàng</p></div><Table className="min-w-[600px] text-left"><TableHeader className="bg-[#f8faff]"><TableRow>{config.columns.map(key => <TableHead key={key} className="px-5 py-4 text-xs text-[#8998ae]">{config.fields.find(f => f.key === key)?.label ?? key}</TableHead>)}<TableHead className="px-5 py-4 text-xs text-[#8998ae]">Thao tác</TableHead></TableRow></TableHeader><TableBody>{!loading && items.map(item => <TableRow key={item.id}>{config.columns.map(key => <TableCell key={key} className="px-5 py-4 text-[#52627c]">{['status', 'priority', 'eventType', 'role', 'companyType'].includes(key) && item[key] ? <Badge className="bg-[#eaf1ff] text-[#243d9a]">{displayValue(key, item[key])}</Badge> : displayValue(key, item[key])}</TableCell>)}<TableCell className="px-5 py-4"><Button variant="ghost" size="sm" onClick={() => openForm(item)}>Sửa</Button><Button variant="ghost" size="sm" onClick={() => void remove(item)} className="text-red-600">Xóa</Button><Button variant="ghost" size="sm" disabled={stageLoading || saving} onClick={() => void loadStages(item)}>Giai đoạn</Button></TableCell></TableRow>)}</TableBody></Table>{loading ? <p className="p-8 text-center text-sm text-slate-500">Đang tải...</p> : items.length === 0 && !error ? <p className="p-8 text-center text-sm text-slate-500">Chưa có dữ liệu.</p> : null}</div>}
+    {section === 'pipelines' && !loading && <div className="mx-auto mt-5 max-w-5xl"><PipelineBoard workspaceId={workspaceId} pipelines={items} revision={stageRevision} editable={canEditData} /></div>}
+    {section !== 'pipelines' ? <RecordWorkspace title={config.title} description={config.description} fields={config.fields} columns={config.columns} items={items} total={total} loading={loading} editable={section === 'members' ? canManageMembers : config.editable && canEditData} canEditItem={item => item.isWorkspaceCreator !== true && item.role !== 'owner'} canDeleteItem={item => item.isWorkspaceCreator !== true && item.role !== 'owner'} paginated={config.paginated} displayValue={displayValue} onEdit={openForm} onDelete={item => void remove(item)} /> :
+    <div className="mt-5 overflow-x-auto rounded-2xl bg-white"><div className="border-b border-[#edf1f8] px-5 py-4"><h2 className="font-semibold text-[#1e2d58]">Quản lý quy trình</h2><p className="mt-1 text-xs text-[#8998ae]">Tạo và sắp xếp các giai đoạn bán hàng</p></div><Table className="min-w-[600px] text-left"><TableHeader className="bg-[#f8faff]"><TableRow>{config.columns.map(key => <TableHead key={key} className="px-5 py-4 text-xs text-[#8998ae]">{config.fields.find(f => f.key === key)?.label ?? key}</TableHead>)}<TableHead className="px-5 py-4 text-xs text-[#8998ae]">Thao tác</TableHead></TableRow></TableHeader><TableBody>{!loading && items.map(item => <TableRow key={item.id}>{config.columns.map(key => <TableCell key={key} className="px-5 py-4 text-[#52627c]">{['status', 'priority', 'eventType', 'role', 'companyType'].includes(key) && item[key] ? <Badge className="bg-[#eaf1ff] text-[#243d9a]">{displayValue(key, item[key])}</Badge> : displayValue(key, item[key])}</TableCell>)}<TableCell className="px-5 py-4">{canEditData && <><Button variant="ghost" size="sm" onClick={() => openForm(item)}>Sửa</Button><Button variant="ghost" size="sm" onClick={() => void remove(item)} className="text-red-600">Xóa</Button><Button variant="ghost" size="sm" disabled={stageLoading || saving} onClick={() => void loadStages(item)}>Giai đoạn</Button></>}</TableCell></TableRow>)}</TableBody></Table>{loading ? <p className="p-8 text-center text-sm text-slate-500">Đang tải...</p> : items.length === 0 && !error ? <p className="p-8 text-center text-sm text-slate-500">Chưa có dữ liệu.</p> : null}</div>}
     {config.paginated && <div className="mt-4 flex items-center justify-between text-sm text-slate-500"><span>{total} kết quả</span><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={loading || page <= 1} onClick={() => setPage(page - 1)}>Trước</Button><span>Trang {page}</span><Button variant="outline" size="sm" disabled={loading || page * 50 >= total} onClick={() => setPage(page + 1)}>Sau</Button></div></div>}
     {stagesFor && <div className="mt-6 rounded-2xl border border-[#e2e8f4] bg-white p-6"><div className="flex justify-between"><h2 className="font-semibold">Giai đoạn · {stagesFor.name}</h2><Button variant="ghost" size="sm" onClick={() => setStagesFor(null)}>Đóng</Button></div>{stageLoading ? <p className="mt-4 text-sm text-slate-500">Đang tải...</p> : <ol className="mt-4 space-y-2">{stages.map((stage, index) => <li key={stage.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#f3f6fc] px-4 py-3 text-sm"><span>{stage.name}</span><span className="flex gap-1"><Button variant="ghost" size="sm" disabled={saving || index === 0} onClick={() => void changeStage(stage, 'up')} aria-label={`Di chuyển ${stage.name} lên`}>↑</Button><Button variant="ghost" size="sm" disabled={saving || index === stages.length - 1} onClick={() => void changeStage(stage, 'down')} aria-label={`Di chuyển ${stage.name} xuống`}>↓</Button><Button variant="ghost" size="sm" disabled={saving} onClick={() => void changeStage(stage, 'rename')}>Đổi tên</Button><Button variant="ghost" size="sm" disabled={saving} className="text-red-600" onClick={() => void changeStage(stage, 'delete')}>Xóa</Button></span></li>)}</ol>}<form className="mt-4 flex gap-2" onSubmit={addStage}><Input aria-label="Tên giai đoạn" value={stageName} onChange={e => setStageName(e.target.value)} placeholder="Tên giai đoạn mới" required /><Button disabled={saving || stageLoading} className="bg-[#243d9a] text-white hover:bg-[#1c327f]">Thêm giai đoạn</Button></form></div>}
   </section>

@@ -3,9 +3,9 @@ import { AlertTriangle, KeyRound, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { changePassword, getUserProfile, setupOtp, verifyOtpSetup, type OtpSetup, type UserProfile } from '@/services/auth'
+import { changePassword, getUserProfile, setupOtp, updateUserProfile, verifyOtpSetup, type OtpSetup, type UserProfile } from '@/services/auth'
 
-function ProfilePage() {
+function ProfilePage({ onProfileUpdated }: { onProfileUpdated: (fullName: string) => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [setup, setSetup] = useState<OtpSetup | null>(null)
   const [email, setEmail] = useState('')
@@ -18,6 +18,21 @@ function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+
+  async function submitProfileUpdate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!profile || saving) return
+    if (!profile.fullName.trim()) { setError('Họ tên không được để trống.'); return }
+    setSaving(true); setError(''); setMessage('')
+    try {
+      const updated = await updateUserProfile(profile.fullName.trim(), profile.avatarUrl ?? '')
+      setProfile(current => current ? { ...current, fullName: updated.fullName, avatarUrl: updated.avatarUrl } : current)
+      onProfileUpdated(updated.fullName)
+      setMessage('Đã cập nhật thông tin cá nhân.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không thể cập nhật thông tin cá nhân.')
+    } finally { setSaving(false) }
+  }
 
   useEffect(() => {
     let active = true
@@ -79,10 +94,13 @@ function ProfilePage() {
     {loading ? <p className="rounded-2xl bg-white p-6 text-sm text-[#718096]">Đang tải hồ sơ...</p> : profile && <>
       <div className="rounded-2xl bg-white p-5 sm:p-6">
         <h2 className="text-lg font-semibold text-[#17264a]">Thông tin tài khoản</h2>
-        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div><dt className="text-xs text-[#8998ae]">Họ và tên</dt><dd className="mt-1 text-sm font-medium">{profile.fullName}</dd></div>
-          <div><dt className="text-xs text-[#8998ae]">Email tài khoản</dt><dd className="mt-1 text-sm font-medium">{profile.email}</dd></div>
-        </dl>
+        <p className="mt-1 text-sm text-[#718096]">Email tài khoản không thể thay đổi.</p>
+        <form onSubmit={submitProfileUpdate} className="mt-5 grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2"><Label htmlFor="profile-full-name">Họ và tên</Label><Input id="profile-full-name" required maxLength={150} value={profile.fullName} onChange={event => setProfile(current => current ? { ...current, fullName: event.target.value } : current)} /></div>
+          <div className="space-y-2"><Label htmlFor="profile-avatar-url">Ảnh đại diện (URL)</Label><Input id="profile-avatar-url" type="url" maxLength={2048} value={profile.avatarUrl ?? ''} onChange={event => setProfile(current => current ? { ...current, avatarUrl: event.target.value } : current)} placeholder="https://..." /></div>
+          <div className="sm:col-span-2"><p className="text-xs text-[#8998ae]">Email tài khoản: <span className="font-medium text-[#52627c]">{profile.email}</span></p></div>
+          <div className="sm:col-span-2"><Button type="submit" disabled={saving} className="bg-[#243d9a] text-white hover:bg-[#1c327f]">{saving ? 'Đang lưu...' : 'Lưu thông tin cá nhân'}</Button></div>
+        </form>
       </div>
 
       <div className="mt-5 rounded-2xl bg-white p-5 sm:p-6">

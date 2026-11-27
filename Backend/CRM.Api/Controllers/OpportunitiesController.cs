@@ -1,5 +1,6 @@
 using CRM.Api.Data;
 using CRM.Api.Models;
+using CRM.Api.Security;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -52,7 +53,7 @@ public sealed class OpportunitiesController : ControllerBase
         if (request.WorkspaceId == Guid.Empty || string.IsNullOrWhiteSpace(request.Title)
             || request.Probability is < 0 or > 100 || request.ExpectedValue < 0)
             return BadRequest(new { message = "WorkspaceId, Title, a non-negative value and probability from 0 to 100 are required." });
-        if (!await IsMember(request.WorkspaceId))
+        if (!await CanEdit(request.WorkspaceId))
             return NotFound();
         if (!await _db.Pipelines.AnyAsync(x => x.Id == request.PipelineId && x.WorkspaceId == request.WorkspaceId)
             || !await _db.PipelineStages.AnyAsync(x => x.Id == request.StageId && x.PipelineId == request.PipelineId))
@@ -84,7 +85,7 @@ public sealed class OpportunitiesController : ControllerBase
         var item = await _db.Opportunities.SingleOrDefaultAsync(x => x.Id == id);
         if (item is null)
             return NotFound();
-        if (!await IsMember(item.WorkspaceId))
+        if (!await CanEdit(item.WorkspaceId))
             return NotFound();
         if (item.WorkspaceId != request.WorkspaceId)
             return BadRequest(new { message = "WorkspaceId cannot be changed." });
@@ -119,7 +120,7 @@ public sealed class OpportunitiesController : ControllerBase
         var item = await _db.Opportunities.SingleOrDefaultAsync(x => x.Id == id);
         if (item is null)
             return NotFound();
-        if (!await IsMember(item.WorkspaceId))
+        if (!await CanEdit(item.WorkspaceId))
             return NotFound();
         _db.Opportunities.Remove(item);
         await _db.SaveChangesAsync();
@@ -132,7 +133,7 @@ public sealed class OpportunitiesController : ControllerBase
         var item = await _db.Opportunities.SingleOrDefaultAsync(x => x.Id == id);
         if (item is null)
             return NotFound();
-        if (!await IsMember(item.WorkspaceId))
+        if (!await CanEdit(item.WorkspaceId))
             return NotFound();
         if (!await _db.PipelineStages.AnyAsync(x => x.Id == request.StageId && x.PipelineId == item.PipelineId))
             return BadRequest(new { message = "Stage must belong to the opportunity pipeline." });
@@ -151,7 +152,7 @@ public sealed class OpportunitiesController : ControllerBase
         var item = await _db.Opportunities.SingleOrDefaultAsync(x => x.Id == id);
         if (item is null)
             return NotFound();
-        if (!await IsMember(item.WorkspaceId))
+        if (!await CanEdit(item.WorkspaceId))
             return NotFound();
         item.Status = status;
         item.UpdatedAt = DateTime.UtcNow;
@@ -195,7 +196,7 @@ public sealed class OpportunitiesController : ControllerBase
     public async Task<IActionResult> AddMember(Guid opportunityId, AddOpportunityMemberRequest request)
     {
         var opportunity = await _db.Opportunities.SingleOrDefaultAsync(x => x.Id == opportunityId);
-        if (opportunity is null || !await IsMember(opportunity.WorkspaceId))
+        if (opportunity is null || !await CanEdit(opportunity.WorkspaceId))
             return NotFound();
         if (!await _db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == opportunity.WorkspaceId && x.UserId == request.UserId))
             return BadRequest(new { message = "User must be a member of the opportunity workspace." });
@@ -223,7 +224,7 @@ public sealed class OpportunitiesController : ControllerBase
     public async Task<IActionResult> UpdateMember(Guid opportunityId, Guid userId, UpdateOpportunityMemberRequest request)
     {
         var opportunity = await _db.Opportunities.SingleOrDefaultAsync(x => x.Id == opportunityId);
-        if (opportunity is null || !await IsMember(opportunity.WorkspaceId))
+        if (opportunity is null || !await CanEdit(opportunity.WorkspaceId))
             return NotFound();
         var member = await _db.OpportunityMembers.SingleOrDefaultAsync(x =>
             x.OpportunityId == opportunityId && x.UserId == userId);
@@ -246,7 +247,7 @@ public sealed class OpportunitiesController : ControllerBase
     public async Task<IActionResult> RemoveMember(Guid opportunityId, Guid userId)
     {
         var opportunity = await _db.Opportunities.SingleOrDefaultAsync(x => x.Id == opportunityId);
-        if (opportunity is null || !await IsMember(opportunity.WorkspaceId))
+        if (opportunity is null || !await CanEdit(opportunity.WorkspaceId))
             return NotFound();
         var member = await _db.OpportunityMembers.SingleOrDefaultAsync(x =>
             x.OpportunityId == opportunityId && x.UserId == userId);
@@ -265,7 +266,14 @@ public sealed class OpportunitiesController : ControllerBase
     {
         if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
             return System.Threading.Tasks.Task.FromResult(false);
-        return _db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId);
+        return WorkspaceAccess.IsMemberAsync(_db, workspaceId, userId);
+    }
+
+    private System.Threading.Tasks.Task<bool> CanEdit(Guid workspaceId)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return System.Threading.Tasks.Task.FromResult(false);
+        return WorkspaceAccess.CanEditAsync(_db, workspaceId, userId);
     }
 }
 

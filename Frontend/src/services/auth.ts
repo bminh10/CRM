@@ -26,8 +26,10 @@ export async function getSession(): Promise<AuthSession> {
 }
 
 export interface UserProfile {
+  id: string
   email: string
   fullName: string
+  avatarUrl: string | null
   isOtpConfigured: boolean
 }
 
@@ -39,6 +41,13 @@ export interface OtpSetup {
 
 export function getUserProfile() {
   return api<UserProfile>('/users/profile')
+}
+
+export function updateUserProfile(fullName: string, avatarUrl: string) {
+  return api<{ id: string; email: string; fullName: string; avatarUrl: string | null }>('/users/profile', {
+    method: 'PUT',
+    body: JSON.stringify({ fullName, avatarUrl: avatarUrl || null }),
+  })
 }
 
 export function setupOtp(email: string) {

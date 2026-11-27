@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using CRM.Api.Data;
 using CRM.Api.Models;
+using CRM.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +27,7 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
             return Unauthorized();
 
         var existing = await db.Workspaces.AsNoTracking()
-            .Where(x => x.WorkspaceMembers.Any(member => member.UserId == userId))
+            .Where(x => !x.IsArchived && x.WorkspaceMembers.Any(member => member.UserId == userId))
             .OrderBy(x => x.Name).ThenBy(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
         if (existing is not null)
@@ -57,8 +58,8 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
     {
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
-        if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(new { message = "Name is required." });
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 150)
+            return BadRequest(new { message = "Name is required and must be at most 150 characters." });
         var now = DateTime.UtcNow;
         var workspace = new Workspace
         {
@@ -80,9 +81,26 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
         var items = await db.Workspaces.AsNoTracking()
-            .Where(x => x.WorkspaceMembers.Any(member => member.UserId == userId))
+            .Where(x => !x.IsArchived && x.WorkspaceMembers.Any(member => member.UserId == userId))
             .OrderBy(x => x.Name)
-            .Select(x => new WorkspaceResponse(x.Id, x.Name, x.Description, x.CreatedBy, x.CreatedAt, x.UpdatedAt))
+            .Select(x => new WorkspaceResponse(x.Id, x.Name, x.Description, x.CreatedBy, x.CreatedAt, x.UpdatedAt,
+                x.CreatedBy == userId ? "owner" :
+                    x.WorkspaceMembers.Where(member => member.UserId == userId).Select(member => member.Role).First(), false))
+            .ToListAsync(cancellationToken);
+        return Ok(items);
+    }
+
+    [HttpGet("archived")]
+    public async Task<IActionResult> GetArchived(CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+        var items = await db.Workspaces.AsNoTracking()
+            .Where(x => x.IsArchived && x.WorkspaceMembers.Any(member => member.UserId == userId
+                && (member.Role == "owner" || x.CreatedBy == userId)))
+            .OrderBy(x => x.Name)
+            .Select(x => new WorkspaceResponse(x.Id, x.Name, x.Description, x.CreatedBy, x.CreatedAt, x.UpdatedAt,
+                "owner", true))
             .ToListAsync(cancellationToken);
         return Ok(items);
     }
@@ -93,8 +111,13 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
         var workspace = await db.Workspaces.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == id && x.WorkspaceMembers.Any(member => member.UserId == userId), cancellationToken);
-        return workspace is null ? NotFound() : Ok(ToResponse(workspace));
+            .SingleOrDefaultAsync(x => x.Id == id && !x.IsArchived
+                && x.WorkspaceMembers.Any(member => member.UserId == userId), cancellationToken);
+        if (workspace is null)
+            return NotFound();
+        var role = await db.WorkspaceMembers.Where(x => x.WorkspaceId == id && x.UserId == userId)
+            .Select(x => x.Role).SingleAsync(cancellationToken);
+        return Ok(ToResponse(workspace, workspace.CreatedBy == userId ? "owner" : role));
     }
 
     [HttpPut("{id:guid}")]
@@ -102,15 +125,15 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
     {
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
-        if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(new { message = "Name is required." });
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 150)
+            return BadRequest(new { message = "Name is required and must be at most 150 characters." });
         if (!await IsWorkspaceAdmin(id, userId, cancellationToken))
             return NotFound();
-        var workspace = await db.Workspaces.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var workspace = await db.Workspaces.SingleOrDefaultAsync(x => x.Id == id && !x.IsArchived, cancellationToken);
         if (workspace is null)
             return NotFound();
         workspace.Name = request.Name.Trim();
-        workspace.Description = request.Description;
+        workspace.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         workspace.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(ToResponse(workspace));
@@ -123,10 +146,29 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
             return Unauthorized();
         if (!await IsWorkspaceAdmin(id, userId, cancellationToken))
             return NotFound();
-        return StatusCode(StatusCodes.Status501NotImplemented, new
-        {
-            message = "Workspace deletion needs an archival/cascade-retention policy; dependent CRM records are not automatically deleted."
-        });
+        var workspace = await db.Workspaces.SingleOrDefaultAsync(x => x.Id == id && !x.IsArchived, cancellationToken);
+        if (workspace is null)
+            return NotFound();
+        workspace.IsArchived = true;
+        workspace.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/restore")]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var userId))
+            return Unauthorized();
+        if (!await WorkspaceAccess.IsOwnerAsync(db, id, userId, includeArchived: true, cancellationToken: cancellationToken))
+            return NotFound();
+        var workspace = await db.Workspaces.SingleOrDefaultAsync(x => x.Id == id && x.IsArchived, cancellationToken);
+        if (workspace is null)
+            return NotFound();
+        workspace.IsArchived = false;
+        workspace.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(ToResponse(workspace));
     }
 
     [HttpGet("{id:guid}/members")]
@@ -138,7 +180,8 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
             return NotFound();
         var items = await db.WorkspaceMembers.AsNoTracking().Where(x => x.WorkspaceId == id)
             .OrderBy(x => x.User.FullName)
-            .Select(x => new WorkspaceMemberResponse(x.UserId, x.User.Email, x.User.FullName, x.User.AvatarUrl, x.Role, x.JoinedAt))
+            .Select(x => new WorkspaceMemberResponse(x.UserId, x.User.Email, x.User.FullName,
+                x.User.AvatarUrl, x.Role, x.JoinedAt, x.UserId == x.Workspace.CreatedBy))
             .ToListAsync(cancellationToken);
         return Ok(items);
     }
@@ -176,9 +219,7 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
             return Conflict(new { message = "User is already a workspace member." });
         var role = NormalizeRole(request.Role);
         if (role is null)
-            return BadRequest(new { message = "Role must be owner, editor or viewer." });
-        if (role == "owner")
-            return BadRequest(new { message = "Use the role endpoint to transfer ownership; a new member cannot be assigned as owner directly." });
+            return BadRequest(new { message = "Role must be editor or viewer." });
         var member = new WorkspaceMember
         {
             Id = Guid.NewGuid(), WorkspaceId = workspaceId, UserId = request.UserId,
@@ -187,7 +228,8 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
         db.WorkspaceMembers.Add(member);
         await db.SaveChangesAsync(cancellationToken);
         return Created($"/api/workspaces/{workspaceId}/members/{user.Id}",
-            new WorkspaceMemberResponse(user.Id, user.Email, user.FullName, user.AvatarUrl, member.Role, member.JoinedAt));
+            new WorkspaceMemberResponse(user.Id, user.Email, user.FullName, user.AvatarUrl, member.Role,
+                member.JoinedAt, false));
     }
 
     [HttpGet("{workspaceId:guid}/members/me")]
@@ -196,8 +238,9 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
         if (!TryGetCurrentUserId(out var userId))
             return Unauthorized();
         var item = await db.WorkspaceMembers.AsNoTracking()
-            .Where(x => x.WorkspaceId == workspaceId && x.UserId == userId)
-            .Select(x => new WorkspaceMemberResponse(x.UserId, x.User.Email, x.User.FullName, x.User.AvatarUrl, x.Role, x.JoinedAt))
+            .Where(x => x.WorkspaceId == workspaceId && x.UserId == userId && !x.Workspace.IsArchived)
+            .Select(x => new WorkspaceMemberResponse(x.UserId, x.User.Email, x.User.FullName,
+                x.User.AvatarUrl, x.Role, x.JoinedAt, x.UserId == x.Workspace.CreatedBy))
             .SingleOrDefaultAsync(cancellationToken);
         return item is null ? NotFound() : Ok(item);
     }
@@ -211,7 +254,8 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
             return NotFound();
         var member = await db.WorkspaceMembers.AsNoTracking()
             .Where(x => x.WorkspaceId == workspaceId && x.UserId == userId)
-            .Select(x => new WorkspaceMemberResponse(x.UserId, x.User.Email, x.User.FullName, x.User.AvatarUrl, x.Role, x.JoinedAt))
+            .Select(x => new WorkspaceMemberResponse(x.UserId, x.User.Email, x.User.FullName,
+                x.User.AvatarUrl, x.Role, x.JoinedAt, x.UserId == x.Workspace.CreatedBy))
             .SingleOrDefaultAsync(cancellationToken);
         return member is null ? NotFound() : Ok(member);
     }
@@ -225,25 +269,16 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
             return NotFound();
         var role = NormalizeRole(request.Role);
         if (role is null)
-            return BadRequest(new { message = "Role must be owner, editor or viewer." });
-        var callerRole = await db.WorkspaceMembers
-            .Where(x => x.WorkspaceId == workspaceId && x.UserId == currentUserId)
-            .Select(x => x.Role).SingleOrDefaultAsync(cancellationToken);
+            return BadRequest(new { message = "Role must be editor or viewer. A workspace owner cannot be assigned to another member." });
+        var workspace = await db.Workspaces.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == workspaceId && !x.IsArchived, cancellationToken);
+        if (workspace is null)
+            return NotFound();
         var member = await db.WorkspaceMembers.SingleOrDefaultAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId, cancellationToken);
         if (member is null)
             return NotFound();
-        if (member.Role == "owner" && callerRole != "owner")
-            return Forbid();
-        if (role == "owner")
-        {
-            if (callerRole != "owner")
-                return Forbid();
-            var oldOwner = await db.WorkspaceMembers.SingleAsync(
-                x => x.WorkspaceId == workspaceId && x.Role == "owner", cancellationToken);
-            oldOwner.Role = "editor";
-        }
-        else if (member.Role == "owner")
-            return Conflict(new { message = "Transfer ownership by assigning the owner role to another member." });
+        if (userId == workspace.CreatedBy || member.Role == "owner")
+            return Conflict(new { message = "The workspace creator/owner role cannot be changed." });
         member.Role = role;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(new { userId, workspaceId, role });
@@ -254,14 +289,20 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
     {
         if (!TryGetCurrentUserId(out var currentUserId))
             return Unauthorized();
+        if (!await IsMember(workspaceId, currentUserId, cancellationToken))
+            return NotFound();
         var isSelf = currentUserId == userId;
         if (!isSelf && !await IsWorkspaceAdmin(workspaceId, currentUserId, cancellationToken))
             return NotFound();
         var member = await db.WorkspaceMembers.SingleOrDefaultAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId, cancellationToken);
         if (member is null)
             return NotFound();
-        if (member.Role == "owner")
-            return Conflict(new { message = "Transfer workspace ownership before removing its owner." });
+        var creatorId = await db.Workspaces.Where(x => x.Id == workspaceId)
+            .Select(x => (Guid?)x.CreatedBy).SingleOrDefaultAsync(cancellationToken);
+        if (creatorId is null)
+            return NotFound();
+        if (userId == creatorId || member.Role == "owner")
+            return Conflict(new { message = "The workspace creator/owner cannot be removed." });
         db.WorkspaceMembers.Remove(member);
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
@@ -322,7 +363,8 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
         var normalizedEmail = email.Trim().ToLowerInvariant();
         var now = DateTime.UtcNow;
         var items = await db.WorkspaceInvitations.AsNoTracking()
-            .Where(x => x.Email == normalizedEmail && x.Status == "pending" && x.ExpiresAt > now)
+            .Where(x => x.Email == normalizedEmail && x.Status == "pending" && x.ExpiresAt > now
+                && !x.Workspace.IsArchived)
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => new IncomingInvitationResponse(x.Id, x.WorkspaceId, x.Workspace.Name,
                 x.Email, x.InvitedByNavigation.FullName, x.ExpiresAt, x.CreatedAt))
@@ -375,6 +417,9 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
             return NotFound();
         if (!string.Equals(invitation.Email, email, StringComparison.OrdinalIgnoreCase))
             return Forbid();
+        if (status == "accepted" && await db.Workspaces.AnyAsync(
+                x => x.Id == invitation.WorkspaceId && x.IsArchived, cancellationToken))
+            return NotFound();
 
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT id FROM users WHERE id = {userId} FOR UPDATE", cancellationToken);
@@ -412,28 +457,28 @@ public sealed class WorkspacesController(CrmDbContext db) : ControllerBase
         Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
 
     private Task<bool> IsMember(Guid workspaceId, Guid userId, CancellationToken ct) =>
-        db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId, ct);
+        WorkspaceAccess.IsMemberAsync(db, workspaceId, userId, ct);
 
     private Task<bool> IsWorkspaceAdmin(Guid workspaceId, Guid userId, CancellationToken ct) =>
-        db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == workspaceId && x.UserId == userId
-            && x.Role == "owner", ct);
+        WorkspaceAccess.IsOwnerAsync(db, workspaceId, userId, cancellationToken: ct);
 
-    private static string? NormalizeRole(string role) => role.Trim().ToLowerInvariant() switch
+    private static string? NormalizeRole(string? role) => role?.Trim().ToLowerInvariant() switch
     {
-        "owner" => "owner",
         "editor" => "editor",
         "viewer" => "viewer",
         _ => null
     };
 
-    private static WorkspaceResponse ToResponse(Workspace x) =>
-        new(x.Id, x.Name, x.Description, x.CreatedBy, x.CreatedAt, x.UpdatedAt);
+    private static WorkspaceResponse ToResponse(Workspace x, string role = "owner") =>
+        new(x.Id, x.Name, x.Description, x.CreatedBy, x.CreatedAt, x.UpdatedAt, role, x.IsArchived);
 }
 
 public sealed record CreateWorkspaceRequest(string Name, string? Description);
 public sealed record UpdateWorkspaceRequest(string Name, string? Description);
-public sealed record WorkspaceResponse(Guid Id, string Name, string? Description, Guid CreatedBy, DateTime? CreatedAt, DateTime? UpdatedAt);
-public sealed record WorkspaceMemberResponse(Guid UserId, string Email, string FullName, string? AvatarUrl, string Role, DateTime? JoinedAt);
+public sealed record WorkspaceResponse(Guid Id, string Name, string? Description, Guid CreatedBy,
+    DateTime? CreatedAt, DateTime? UpdatedAt, string Role, bool IsArchived);
+public sealed record WorkspaceMemberResponse(Guid UserId, string Email, string FullName,
+    string? AvatarUrl, string Role, DateTime? JoinedAt, bool IsWorkspaceCreator);
 public sealed record AddWorkspaceMemberRequest(Guid UserId, string Role);
 public sealed record UpdateWorkspaceMemberRoleRequest(string Role);
 public sealed record CreateInvitationRequest(string Email);

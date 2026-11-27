@@ -15,6 +15,8 @@ interface Props {
   loading: boolean
   editable?: boolean
   paginated?: boolean
+  canEditItem?: (item: RecordItem) => boolean
+  canDeleteItem?: (item: RecordItem) => boolean
   displayValue: (key: string, value: RecordItem[string]) => string
   onEdit: (item: RecordItem) => void
   onDelete: (item: RecordItem) => void
@@ -50,12 +52,14 @@ function linkedValue(key: string, value: RecordItem[string], displayValue: Props
   })
 }
 
-export default function RecordWorkspace({ title, description, fields, columns, items, total, loading, editable, paginated, displayValue, onEdit, onDelete }: Props) {
+export default function RecordWorkspace({ title, description, fields, columns, items, total, loading, editable, paginated, canEditItem, canDeleteItem, displayValue, onEdit, onDelete }: Props) {
   const [selectedKey, setSelectedKey] = useState('')
   const [query, setQuery] = useState('')
   const filtered = items.filter(item => columns.some(key => String(item[key] ?? '').toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi'))))
   const selected = filtered.find((item, index) => itemKey(item, index) === selectedKey) ?? filtered[0]
   const selectedName = selected ? displayValue(columns[0], selected[columns[0]]) : ''
+  const canEditSelected = !!selected && !!editable && (canEditItem?.(selected) ?? true)
+  const canDeleteSelected = !!selected && !!editable && (canDeleteItem?.(selected) ?? true)
 
   return <>
     <div className="mt-5 grid gap-4 md:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,1fr)]">
@@ -73,7 +77,7 @@ export default function RecordWorkspace({ title, description, fields, columns, i
       </section>
       <section className="min-h-[400px] rounded-2xl bg-white p-5 sm:p-7">
         {selected ? <>
-          <div className="flex flex-wrap items-start gap-4"><span className="grid size-14 shrink-0 place-items-center rounded-full bg-[#dbe7ff] text-lg font-bold text-[#243d9a]">{initials(selectedName)}</span><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold tracking-[.15em] text-[#8a9ab2]">CHI TIẾT {title.toUpperCase()}</p><h2 className="mt-1 break-words text-xl font-semibold text-[#101c43]">{selectedName}</h2><p className="mt-1 text-sm text-[#8998ae]">{columns[1] ? displayValue(columns[1], selected[columns[1]]) : description}</p></div>{editable && <div className="flex gap-1"><Button variant="outline" size="sm" onClick={() => onEdit(selected)}><Pencil /> Sửa</Button><Button variant="ghost" size="sm" onClick={() => onDelete(selected)} className="text-red-600"><Trash2 /> Xóa</Button></div>}</div>
+          <div className="flex flex-wrap items-start gap-4"><span className="grid size-14 shrink-0 place-items-center rounded-full bg-[#dbe7ff] text-lg font-bold text-[#243d9a]">{initials(selectedName)}</span><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold tracking-[.15em] text-[#8a9ab2]">CHI TIẾT {title.toUpperCase()}</p><h2 className="mt-1 break-words text-xl font-semibold text-[#101c43]">{selectedName}</h2><p className="mt-1 text-sm text-[#8998ae]">{columns[1] ? displayValue(columns[1], selected[columns[1]]) : description}</p></div>{(canEditSelected || canDeleteSelected) && <div className="flex gap-1">{canEditSelected && <Button variant="outline" size="sm" onClick={() => onEdit(selected)}><Pencil /> Sửa</Button>}{canDeleteSelected && <Button variant="ghost" size="sm" onClick={() => onDelete(selected)} className="text-red-600"><Trash2 /> Xóa</Button>}</div>}</div>
           <div className="mt-6"><span className="rounded-full bg-[#243d9a] px-4 py-2 text-xs font-semibold text-white">Tổng quan</span></div>
           <div className="mt-7"><div className="flex items-center justify-between border-b border-[#edf1f7] pb-3"><h3 className="text-sm font-semibold">Thông tin {title.toLowerCase()}</h3><span className="text-xs text-[#a2afc1]">Dữ liệu workspace</span></div><div className="grid gap-x-8 sm:grid-cols-2">{fields.map(field => <div key={field.key} className="border-b border-[#f0f3f8] py-4"><p className="text-xs text-[#91a0b5]">{field.label}</p><p className="mt-1.5 break-words text-sm font-medium text-[#354760]">{linkedValue(field.key, selected[field.key], displayValue)}</p></div>)}</div></div>
         </> : <div className="grid min-h-[350px] place-items-center text-center"><div><span className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#f0f5ff] text-[#8195be]"><ClipboardList className="size-6" /></span><h2 className="mt-4 font-semibold text-[#334766]">{loading ? 'Đang tải dữ liệu' : 'Chưa có thông tin để hiển thị'}</h2><p className="mt-2 text-sm text-[#98a7bb]">{query ? 'Thử từ khóa khác trong trang này.' : description}</p></div></div>}

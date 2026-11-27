@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, BriefcaseBusiness, Check, Copy, Layers3, LogOut, MailPlus, Plus, UsersRound } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowRight, BriefcaseBusiness, Check, Copy, Layers3, LogOut, MailPlus, Pencil, Plus, UsersRound } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import InvitationInbox from '@/components/InvitationInbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createWorkspace, createWorkspaceInvitation, listWorkspaces } from '@/services/crm'
+import { archiveWorkspace, createWorkspace, createWorkspaceInvitation, listArchivedWorkspaces, listWorkspaces, restoreWorkspace, updateWorkspace } from '@/services/crm'
 import type { AuthSession } from '@/types/auth'
 import type { Invitation, Workspace } from '@/types/crm'
 
 function WorkspaceHub({ session, onLogout }: { session: AuthSession | null; onLogout: () => void }) {
   const navigate = useNavigate()
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [archivedWorkspaces, setArchivedWorkspaces] = useState<Workspace[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -23,10 +24,15 @@ function WorkspaceHub({ session, onLogout }: { session: AuthSession | null; onLo
   const [email, setEmail] = useState('')
   const [invite, setInvite] = useState<Invitation | null>(null)
   const [copied, setCopied] = useState(false)
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState('')
+  const [editName, setEditName] = useState('')
+  const [editDescription, setEditDescription] = useState('')
 
   const loadWorkspaces = useCallback(async () => {
     try {
-      setWorkspaces(await listWorkspaces())
+      const [active, archived] = await Promise.all([listWorkspaces(), listArchivedWorkspaces()])
+      setWorkspaces(active)
+      setArchivedWorkspaces(archived)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không thể tải workspace.')
     } finally {
@@ -68,6 +74,40 @@ function WorkspaceHub({ session, onLogout }: { session: AuthSession | null; onLo
     } finally {
       setSaving(false)
     }
+  }
+
+  async function submitWorkspaceEdit(event: FormEvent<HTMLFormElement>, workspaceId: string) {
+    event.preventDefault()
+    if (saving || !editName.trim()) return
+    setSaving(true); setError('')
+    try {
+      const updated = await updateWorkspace(workspaceId, editName.trim(), editDescription.trim())
+      setWorkspaces(current => current.map(item => item.id === workspaceId ? updated : item))
+      setEditingWorkspaceId('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không thể cập nhật workspace.')
+    } finally { setSaving(false) }
+  }
+
+  async function archive(workspace: Workspace) {
+    if (!window.confirm(`Lưu trữ workspace "${workspace.name}"? Dữ liệu sẽ được giữ lại và có thể khôi phục.`)) return
+    setSaving(true); setError('')
+    try {
+      await archiveWorkspace(workspace.id)
+      await loadWorkspaces()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không thể lưu trữ workspace.')
+    } finally { setSaving(false) }
+  }
+
+  async function restore(workspace: Workspace) {
+    setSaving(true); setError('')
+    try {
+      await restoreWorkspace(workspace.id)
+      await loadWorkspaces()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không thể khôi phục workspace.')
+    } finally { setSaving(false) }
   }
 
   async function copyInvitation() {
@@ -128,8 +168,17 @@ function WorkspaceHub({ session, onLogout }: { session: AuthSession | null; onLo
                   <p className="mt-1 text-xs text-[#8a97aa]">Không gian làm việc của đội ngũ</p>
                   <div className="mt-5 flex gap-2">
                     <Button className="h-9 flex-1 justify-between bg-[#243d9a] px-3 text-white hover:bg-[#1c327f]" onClick={() => openWorkspace(workspace.id)}>Mở workspace <ArrowRight /></Button>
-                    <Button variant="outline" size="icon" aria-label={`Mời thành viên vào ${workspace.name}`} title="Mời thành viên" onClick={() => { setInviteFor(isInviting ? '' : workspace.id); setInvite(null); setError('') }}><MailPlus /></Button>
+                    {workspace.role === 'owner' && <>
+                      <Button variant="outline" size="icon" aria-label={`Sửa ${workspace.name}`} title="Sửa workspace" onClick={() => { setEditingWorkspaceId(editingWorkspaceId === workspace.id ? '' : workspace.id); setEditName(workspace.name); setEditDescription(workspace.description ?? ''); setError('') }}><Pencil /></Button>
+                      <Button variant="outline" size="icon" aria-label={`Lưu trữ ${workspace.name}`} title="Lưu trữ workspace" disabled={saving} onClick={() => void archive(workspace)}><Archive /></Button>
+                      <Button variant="outline" size="icon" aria-label={`Mời thành viên vào ${workspace.name}`} title="Mời thành viên" onClick={() => { setInviteFor(isInviting ? '' : workspace.id); setInvite(null); setError('') }}><MailPlus /></Button>
+                    </>}
                   </div>
+                  {editingWorkspaceId === workspace.id && <form onSubmit={event => void submitWorkspaceEdit(event, workspace.id)} className="mt-5 space-y-3 border-t border-[#edf0f5] pt-4">
+                    <div className="space-y-2"><Label htmlFor={`edit-workspace-name-${workspace.id}`}>Tên workspace</Label><Input id={`edit-workspace-name-${workspace.id}`} required maxLength={150} value={editName} onChange={event => setEditName(event.target.value)} /></div>
+                    <div className="space-y-2"><Label htmlFor={`edit-workspace-description-${workspace.id}`}>Mô tả</Label><Input id={`edit-workspace-description-${workspace.id}`} maxLength={500} value={editDescription} onChange={event => setEditDescription(event.target.value)} /></div>
+                    <div className="flex gap-2"><Button type="submit" disabled={saving} size="sm" className="bg-[#243d9a] text-white hover:bg-[#1c327f]">{saving ? 'Đang lưu...' : 'Lưu thay đổi'}</Button><Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => setEditingWorkspaceId('')}>Hủy</Button></div>
+                  </form>}
                   {isInviting && <form onSubmit={submitInvitation} className="mt-5 border-t border-[#edf0f5] pt-4">
                     <Label htmlFor={`invite-${workspace.id}`} className="text-xs font-semibold text-[#52627c]">Mời bằng email</Label>
                     <div className="mt-2 flex gap-2">
@@ -149,6 +198,15 @@ function WorkspaceHub({ session, onLogout }: { session: AuthSession | null; onLo
             <h2 className="mt-4 font-semibold text-[#17264a]">Chưa có workspace nào</h2>
             <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#718096]">Tạo workspace đầu tiên ở bên phải, hoặc nhờ quản trị viên gửi lời mời tham gia.</p>
           </div>}
+        {archivedWorkspaces.length > 0 && <section className="mt-8">
+          <h2 className="text-sm font-semibold text-[#52627c]">Workspace đã lưu trữ</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {archivedWorkspaces.map(workspace => <div key={workspace.id} className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-[#d6deea] bg-white p-4">
+              <div className="min-w-0"><p className="truncate text-sm font-semibold text-[#52627c]">{workspace.name}</p><p className="mt-1 text-xs text-[#8998ae]">Dữ liệu được giữ nguyên</p></div>
+              <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => void restore(workspace)}><ArchiveRestore className="size-4" /> Khôi phục</Button>
+            </div>)}
+          </div>
+        </section>}
       </section>
 
       <aside className="lg:pt-[3.55rem]">

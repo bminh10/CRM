@@ -17,6 +17,8 @@ public partial class Workspace
 
     public DateTime? UpdatedAt { get; set; }
 
+    public bool IsArchived { get; set; }
+
     public virtual ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
 
     public virtual ICollection<CalendarEvent> CalendarEvents { get; set; } = new List<CalendarEvent>();
