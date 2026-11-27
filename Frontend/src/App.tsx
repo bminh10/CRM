@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter } from 'react-router-dom'
+import SessionStatus from '@/components/SessionStatus'
 import AppRoutes from '@/routes'
 import type { AuthSession } from '@/types/auth'
 import { ApiError, getSession, logoutSession } from '@/services/auth'
@@ -21,8 +22,11 @@ function AppContent() {
         const result = await getSession()
         if (active) setSession(result)
       } catch (e) {
-        if (active && !(e instanceof ApiError && e.status === 401))
-          setError('Không thể kiểm tra phiên đăng nhập. Vui lòng thử lại.')
+        if (active && !(e instanceof ApiError && e.status === 401)) {
+          setError(e instanceof ApiError
+            ? `Máy chủ không thể xử lý yêu cầu (HTTP ${e.status}).`
+            : 'Không thể kết nối hoặc nhận phản hồi hợp lệ từ máy chủ.')
+        }
       } finally {
         if (active) setLoading(false)
       }
@@ -47,8 +51,8 @@ function AppContent() {
     }
   }
 
-  if (loading) return <p className="p-8 text-sm">Đang kiểm tra phiên đăng nhập...</p>
-  if (error && !session) return <div role="alert" className="p-8 text-sm">{error} <button type="button" className="underline" onClick={() => { setError(''); setLoading(true); setRetry(value => value + 1) }}>Thử lại</button></div>
+  if (loading) return <SessionStatus />
+  if (error && !session) return <SessionStatus error={error} onRetry={() => { setError(''); setLoading(true); setRetry(value => value + 1) }} />
   return <>{error && <p role="alert" className="bg-red-50 p-3 text-center text-sm text-red-700">{error}</p>}<AppRoutes session={session} onLogin={setSession} onLogout={() => void logout()} /></>
 }
 
