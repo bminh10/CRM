@@ -625,7 +625,7 @@ public partial class CrmDbContext : DbContext
                 .HasColumnName("joined_at");
             entity.Property(e => e.Role)
                 .HasMaxLength(50)
-                .HasDefaultValueSql("'member'::character varying")
+                .HasDefaultValueSql("'viewer'::character varying")
                 .HasColumnName("role");
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.Property(e => e.WorkspaceId).HasColumnName("workspace_id");

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, useLocation } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 import AppRoutes from '@/routes'
 import type { AuthSession } from '@/types/auth'
 import { ApiError, getSession, logoutSession } from '@/services/auth'
@@ -9,7 +9,6 @@ function App() {
 }
 
 function AppContent() {
-  const { pathname } = useLocation()
   const [session, setSession] = useState<AuthSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -48,14 +47,9 @@ function AppContent() {
     }
   }
 
-  return (
-    <>
-      {pathname === '/' ? <AppRoutes session={session} onLogin={setSession} onLogout={() => void logout()} /> :
-        loading ? <p className="p-8 text-sm">Đang kiểm tra phiên đăng nhập...</p> :
-        error && !session ? <div role="alert" className="p-8 text-sm">{error} <button type="button" className="underline" onClick={() => { setError(''); setLoading(true); setRetry(value => value + 1) }}>Thử lại</button></div> :
-          <>{error && <p role="alert" className="bg-red-50 p-3 text-center text-sm text-red-700">{error}</p>}<AppRoutes session={session} onLogin={setSession} onLogout={() => void logout()} /></>}
-    </>
-  )
+  if (loading) return <p className="p-8 text-sm">Đang kiểm tra phiên đăng nhập...</p>
+  if (error && !session) return <div role="alert" className="p-8 text-sm">{error} <button type="button" className="underline" onClick={() => { setError(''); setLoading(true); setRetry(value => value + 1) }}>Thử lại</button></div>
+  return <>{error && <p role="alert" className="bg-red-50 p-3 text-center text-sm text-red-700">{error}</p>}<AppRoutes session={session} onLogin={setSession} onLogout={() => void logout()} /></>
 }
 
 export default App

@@ -76,6 +76,9 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
         if (request.WorkspaceId == Guid.Empty || string.IsNullOrWhiteSpace(request.Title)
             || request.StartDate.HasValue && request.DueDate.HasValue && request.StartDate > request.DueDate)
             return BadRequest(new { message = "Valid WorkspaceId and Title are required; StartDate cannot follow DueDate." });
+        var status = request.Status is null ? "todo" : NormalizeStatus(request.Status);
+        if (status is null)
+            return BadRequest(new { message = "Status must be todo, in_progress, done or cancelled." });
         if (!await IsMember(request.WorkspaceId, userId, cancellationToken))
             return NotFound();
         if (request.OpportunityId.HasValue && !await db.Opportunities.AnyAsync(
@@ -87,7 +90,7 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
         var task = new CrmTask
         {
             Id = Guid.NewGuid(), WorkspaceId = request.WorkspaceId, OpportunityId = request.OpportunityId,
-            Title = request.Title.Trim(), Description = request.Description, Status = "todo",
+            Title = request.Title.Trim(), Description = request.Description, Status = status,
             Priority = NormalizePriority(request.Priority), StartDate = request.StartDate?.UtcDateTime,
             DueDate = request.DueDate?.UtcDateTime, CreatedBy = userId, CreatedAt = now, UpdatedAt = now
         };
@@ -113,6 +116,9 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Title)
             || request.StartDate.HasValue && request.DueDate.HasValue && request.StartDate > request.DueDate)
             return BadRequest(new { message = "Valid Title is required; StartDate cannot follow DueDate." });
+        var status = request.Status is null ? task.Status : NormalizeStatus(request.Status);
+        if (status is null)
+            return BadRequest(new { message = "Status must be todo, in_progress, done or cancelled." });
         if (request.OpportunityId.HasValue && !await db.Opportunities.AnyAsync(
                 x => x.Id == request.OpportunityId && x.WorkspaceId == task.WorkspaceId, cancellationToken))
             return BadRequest(new { message = "Opportunity must belong to the specified workspace." });
@@ -121,6 +127,7 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
         task.OpportunityId = request.OpportunityId;
         task.Title = request.Title.Trim();
         task.Description = request.Description;
+        task.Status = status;
         task.Priority = NormalizePriority(request.Priority);
         task.StartDate = request.StartDate?.UtcDateTime;
         task.DueDate = request.DueDate?.UtcDateTime;
@@ -155,8 +162,8 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
     {
         if (!TryUserId(out var userId))
             return Unauthorized();
-        var status = request.Status.Trim().ToLowerInvariant();
-        if (status is not ("todo" or "in_progress" or "done" or "cancelled"))
+        var status = NormalizeStatus(request.Status);
+        if (status is null)
             return BadRequest(new { message = "Status must be todo, in_progress, done or cancelled." });
         var task = await db.Tasks.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (task is null || !await IsMember(task.WorkspaceId, userId, cancellationToken))
@@ -182,15 +189,26 @@ public sealed class TasksController(CrmDbContext db) : ControllerBase
         _ => "medium"
     };
 
+    private static string? NormalizeStatus(string status) => status.Trim().ToLowerInvariant() switch
+    {
+        "todo" => "todo",
+        "in_progress" => "in_progress",
+        "done" => "done",
+        "cancelled" => "cancelled",
+        _ => null
+    };
+
     private static TaskResponse ToResponse(CrmTask x) => new(x.Id, x.WorkspaceId, x.OpportunityId,
         x.Title, x.Description, x.Status, x.Priority, x.StartDate, x.DueDate, x.CreatedBy,
         x.CreatedAt, x.UpdatedAt, x.TaskAssignees.Select(a => a.UserId).ToList());
 }
 
 public sealed record CreateTaskRequest(Guid WorkspaceId, Guid? OpportunityId, string Title,
-    string? Description, string Priority, DateTimeOffset? StartDate, DateTimeOffset? DueDate, List<Guid> AssigneeUserIds);
+    string? Description, string Priority, DateTimeOffset? StartDate, DateTimeOffset? DueDate, List<Guid> AssigneeUserIds,
+    string? Status = null);
 public sealed record UpdateTaskRequest(Guid WorkspaceId, Guid? OpportunityId, string Title,
-    string? Description, string Priority, DateTimeOffset? StartDate, DateTimeOffset? DueDate, List<Guid> AssigneeUserIds);
+    string? Description, string Priority, DateTimeOffset? StartDate, DateTimeOffset? DueDate, List<Guid> AssigneeUserIds,
+    string? Status = null);
 public sealed record UpdateTaskStatusRequest(string Status);
 public sealed record TaskResponse(Guid Id, Guid WorkspaceId, Guid? OpportunityId, string Title,
     string? Description, string Status, string Priority, DateTime? StartDate, DateTime? DueDate,

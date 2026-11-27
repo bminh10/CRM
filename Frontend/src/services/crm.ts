@@ -1,4 +1,4 @@
-import type { OpportunityOption, Option, PipelineOpportunity, RecordItem, Statistics, Workspace } from '@/types/crm'
+import type { IncomingInvitation, Invitation, OpportunityOption, Option, PipelineOpportunity, RecordItem, Statistics, Workspace } from '@/types/crm'
 import { api } from './api'
 
 const endpoints: Record<string, { path: string; paginated?: boolean; queryOnItem?: boolean }> = {
@@ -18,8 +18,23 @@ function endpoint(section: string) {
 }
 
 export function listWorkspaces() { return api<Workspace[]>('/workspaces') }
+export function createWorkspace(name: string, description: string) {
+  return api<Workspace>('/workspaces', { method: 'POST', body: JSON.stringify({ name, description: description || null }) })
+}
 export function ensurePersonalWorkspace() {
   return api<Workspace>('/workspaces/personal', { method: 'POST' })
+}
+export function createWorkspaceInvitation(workspaceId: string, email: string) {
+  return api<Invitation>(`/workspaces/${workspaceId}/invitations`, { method: 'POST', body: JSON.stringify({ email }) })
+}
+export function acceptWorkspaceInvitation(token: string) {
+  return api<{ invitationId: string; status: string }>(`/invitations/${encodeURIComponent(token)}/accept`, { method: 'POST' })
+}
+export function listIncomingInvitations() {
+  return api<IncomingInvitation[]>('/invitations')
+}
+export function respondToInvitation(id: string, response: 'accept' | 'reject') {
+  return api<{ invitationId: string; status: string }>(`/invitations/${id}/${response}`, { method: 'POST' })
 }
 export function getStatistics(workspaceId: string) {
   return api<Statistics>(`/workspaces/${workspaceId}/statistics`)
@@ -66,6 +81,7 @@ export function listPipelineOpportunities(workspaceId: string) {
 export function moveOpportunity(id: string, stageId: string) {
   return api<PipelineOpportunity>(`/opportunities/${id}/stage`, { method: 'PATCH', body: JSON.stringify({ stageId }) })
 }
-export function createActivity(kind: 'tasks' | 'calendar', body: object) {
-  return api<void>(kind === 'tasks' ? '/tasks' : '/calendar-events', { method: 'POST', body: JSON.stringify(body) })
+export function saveActivity(kind: 'tasks' | 'calendar', id: string | undefined, body: object) {
+  const path = kind === 'tasks' ? '/tasks' : '/calendar-events'
+  return api<void>(`${path}${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) })
 }

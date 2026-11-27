@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import { ArrowUpRight, BarChart3, Building2, CalendarDays, CheckSquare, GitBranch, Layers3, LogOut, Target, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import InvitationInbox from '@/components/InvitationInbox'
 import { ensurePersonalWorkspace, getStatistics, listWorkspaces } from '@/services/crm'
 import type { AuthSession } from '@/types/auth'
 import type { Statistics, Workspace } from '@/types/crm'
@@ -20,8 +21,9 @@ const links = [
 
 function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
-  const [workspaceId, setWorkspaceId] = useState('')
+  const [workspaceId, setWorkspaceId] = useState(() => searchParams.get('workspaceId') ?? '')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -43,15 +45,15 @@ function WorkspacePage({ session, onLogout }: { session: AuthSession; onLogout: 
 
   return <div className="min-h-screen bg-[#eef2f8] text-[#17264a] lg:pl-16">
     <aside className="bg-[#1d337f] lg:fixed lg:inset-y-0 lg:left-0 lg:z-20 lg:flex lg:w-16 lg:flex-col lg:items-center">
-      <Link to="/" aria-label="Trang chủ CRM" className="m-2 hidden size-11 place-items-center rounded-xl bg-white text-[#243d9a] shadow-sm lg:grid"><Layers3 className="size-5" /></Link>
+      <Link to="/workspaces" aria-label="Chọn workspace" title="Chọn workspace" className="m-2 hidden size-11 place-items-center rounded-xl bg-white text-[#243d9a] shadow-sm lg:grid"><Layers3 className="size-5" /></Link>
       <nav className="flex items-center gap-1 overflow-x-auto px-2 py-2 lg:mt-4 lg:w-full lg:flex-col lg:gap-2" aria-label="CRM">{links.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} aria-label={label} title={label} className={({ isActive }) => `flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors lg:size-10 lg:justify-center lg:p-0 ${isActive ? 'bg-white/20 text-white' : 'text-blue-100/70 hover:bg-white/10 hover:text-white'}`}><Icon className="size-[18px]" /><span className="lg:sr-only">{label}</span></NavLink>)}</nav>
       <Button variant="ghost" aria-label="Đăng xuất" title="Đăng xuất" onClick={onLogout} className="mb-4 mt-auto hidden size-10 p-0 text-blue-100/70 hover:bg-white/10 hover:text-white lg:flex"><LogOut className="size-[18px]" /></Button>
     </aside>
     <header className="flex min-h-16 flex-wrap items-center gap-3 border-b border-[#e1e8f2] bg-white px-4 py-3 sm:px-7">
-      <Link to="/" className="mr-1 text-lg font-bold tracking-tight text-[#101c43]">CRM<span className="text-[#5268b0]">.</span></Link>
-      <label className="sr-only" htmlFor="workspace-select">Chọn workspace</label><select id="workspace-select" value={workspaceId} onChange={e => setWorkspaceId(e.target.value)} className="max-w-48 rounded-full border border-[#e3eaf4] bg-white px-3 py-2 text-xs font-medium text-[#243d9a]">{workspaces.length === 0 && <option value="">Đang tải workspace</option>}{workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
+      <Link to="/workspaces" className="mr-1 text-lg font-bold tracking-tight text-[#101c43]">CRM<span className="text-[#5268b0]">.</span></Link>
+      <label className="sr-only" htmlFor="workspace-select">Chọn workspace</label><select id="workspace-select" value={workspaceId} onChange={e => { setWorkspaceId(e.target.value); setSearchParams({ workspaceId: e.target.value }) }} className="max-w-48 rounded-full border border-[#e3eaf4] bg-white px-3 py-2 text-xs font-medium text-[#243d9a]">{workspaces.length === 0 && <option value="">Đang tải workspace</option>}{workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
       <span className="hidden text-sm text-[#9aa8bb] md:inline">/</span><span className="hidden text-sm text-[#718096] md:inline">{currentPage}</span>
-      <div className="ml-auto flex items-center gap-2"><span className="grid size-9 place-items-center rounded-full bg-[#e6edff] text-xs font-bold text-[#243d9a]">{initials}</span><span className="hidden max-w-36 truncate text-sm font-semibold sm:inline">{session.user.fullName}</span><Button variant="ghost" size="icon" aria-label="Đăng xuất" onClick={onLogout} className="text-[#718096] lg:hidden"><LogOut className="size-4" /></Button></div>
+      <div className="ml-auto flex items-center gap-2"><InvitationInbox onAccepted={() => void loadWorkspaces()} /><span className="grid size-9 place-items-center rounded-full bg-[#e6edff] text-xs font-bold text-[#243d9a]">{initials}</span><span className="hidden max-w-36 truncate text-sm font-semibold sm:inline">{session.user.fullName}</span><Button variant="ghost" size="icon" aria-label="Đăng xuất" onClick={onLogout} className="text-[#718096] lg:hidden"><LogOut className="size-4" /></Button></div>
     </header>
     <main className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6">
       {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} <button type="button" className="underline" onClick={() => void loadWorkspaces()}>Thử lại</button></div>}
