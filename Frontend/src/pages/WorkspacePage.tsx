@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
-import { ArrowUpRight, BarChart3, Building2, CalendarDays, CheckSquare, ChevronDown, GitBranch, Layers3, LogOut, Target, UserRound, UsersRound } from 'lucide-react'
+import { ArrowUpRight, BarChart3, Building2, CalendarDays, CheckSquare, ChevronDown, GitBranch, Layers3, LogOut, PanelLeftClose, PanelLeftOpen, Target, UserRound, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import InvitationInbox from '@/components/InvitationInbox'
 import { ensurePersonalWorkspace, getStatistics, listWorkspaces } from '@/services/crm'
 import type { AuthSession } from '@/types/auth'
@@ -27,6 +28,7 @@ function WorkspacePage({ session, onLogout, onProfileUpdated }: { session: AuthS
   const [workspaceId, setWorkspaceId] = useState(() => searchParams.get('workspaceId') ?? '')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const profileMenuRef = useRef<HTMLDivElement>(null)
 
@@ -65,15 +67,21 @@ function WorkspacePage({ session, onLogout, onProfileUpdated }: { session: AuthS
   const currentWorkspaceRole = workspaces.find(workspace => workspace.id === workspaceId)?.role ?? 'viewer'
   const initials = session.user.fullName.trim().split(/\s+/).slice(-2).map(part => part[0]).join('').toUpperCase()
 
-  return <div className="min-h-screen bg-[#eef2f8] text-[#17264a] lg:pl-16">
-    <aside className="bg-[#1d337f] lg:fixed lg:inset-y-0 lg:left-0 lg:z-20 lg:flex lg:w-16 lg:flex-col lg:items-center">
-      <Link to="/workspaces" aria-label="Chọn workspace" title="Chọn workspace" className="m-2 hidden size-11 place-items-center rounded-xl bg-white text-[#243d9a] shadow-sm lg:grid"><Layers3 className="size-5" /></Link>
-      <nav className="flex items-center gap-1 overflow-x-auto px-2 py-2 lg:mt-4 lg:w-full lg:flex-col lg:gap-2" aria-label="CRM">{links.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} aria-label={label} title={label} className={({ isActive }) => `flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors lg:size-10 lg:justify-center lg:p-0 ${isActive ? 'bg-white/20 text-white' : 'text-blue-100/70 hover:bg-white/10 hover:text-white'}`}><Icon className="size-[18px]" /><span className="lg:sr-only">{label}</span></NavLink>)}</nav>
-      <Button variant="ghost" aria-label="Đăng xuất" title="Đăng xuất" onClick={onLogout} className="mb-4 mt-auto hidden size-10 p-0 text-blue-100/70 hover:bg-white/10 hover:text-white lg:flex"><LogOut className="size-[18px]" /></Button>
+  return <div className={`min-h-screen bg-[#eef2f8] text-[#17264a] motion-safe:transition-[padding] ${sidebarExpanded ? 'lg:pl-60' : 'lg:pl-16'}`}>
+    <aside className={`bg-[#1d337f] lg:fixed lg:inset-y-0 lg:left-0 lg:z-20 lg:flex lg:flex-col lg:items-center lg:overflow-hidden motion-safe:transition-[width] ${sidebarExpanded ? 'lg:w-60' : 'lg:w-16'}`}>
+      <Link to="/workspaces" aria-label="Chọn workspace" title="Chọn workspace" className={`hidden items-center gap-3 lg:flex ${sidebarExpanded ? 'w-full px-3 py-2' : 'm-2'}`}><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-[#243d9a] shadow-sm"><Layers3 className="size-5" /></span>{sidebarExpanded && <span className="whitespace-nowrap text-sm font-semibold text-white">Workspace</span>}</Link>
+      <nav id="crm-sidebar-navigation" className={`flex items-center gap-1 overflow-x-auto px-2 py-2 lg:mt-4 lg:min-h-0 lg:w-full lg:flex-col lg:gap-2 lg:overflow-x-hidden lg:overflow-y-auto ${sidebarExpanded ? 'lg:items-stretch' : 'lg:items-center'}`} aria-label="CRM">{links.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} aria-label={label} title={label} className={({ isActive }) => `flex shrink-0 items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${sidebarExpanded ? 'lg:h-10 lg:w-full' : 'lg:size-10 lg:justify-center lg:p-0'} ${isActive ? 'bg-white/20 text-white' : 'text-blue-100/70 hover:bg-white/10 hover:text-white'}`}><Icon className="size-[18px] shrink-0" /><span className={`whitespace-nowrap ${sidebarExpanded ? '' : 'lg:sr-only'}`}>{label}</span></NavLink>)}</nav>
+      <div className="mt-auto hidden w-full flex-col gap-1 px-2 pb-4 lg:flex">
+        <button type="button" aria-label={sidebarExpanded ? 'Thu gọn sidebar' : 'Mở rộng sidebar'} aria-expanded={sidebarExpanded} aria-controls="crm-sidebar-navigation" title={sidebarExpanded ? 'Thu gọn sidebar' : 'Mở rộng sidebar'} onClick={() => setSidebarExpanded(expanded => !expanded)} className={`flex h-10 items-center gap-3 rounded-xl text-sm text-blue-100/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${sidebarExpanded ? 'w-full px-3' : 'w-10 justify-center self-center'}`}>
+          {sidebarExpanded ? <PanelLeftClose className="size-[18px] shrink-0" /> : <PanelLeftOpen className="size-[18px] shrink-0" />}
+          {sidebarExpanded && <span className="whitespace-nowrap">Thu gọn</span>}
+        </button>
+        <Button variant="ghost" aria-label="Đăng xuất" title="Đăng xuất" onClick={onLogout} className={`h-10 text-blue-100/70 hover:bg-white/10 hover:text-white ${sidebarExpanded ? 'w-full justify-start gap-3 px-3' : 'w-10 self-center p-0'}`}><LogOut className="size-[18px]" />{sidebarExpanded && <span>Đăng xuất</span>}</Button>
+      </div>
     </aside>
     <header className="flex min-h-16 flex-wrap items-center gap-3 border-b border-[#e1e8f2] bg-white px-4 py-3 sm:px-7">
       <Link to="/workspaces" className="mr-1 text-lg font-bold tracking-tight text-[#101c43]">CRM<span className="text-[#5268b0]">.</span></Link>
-      <label className="sr-only" htmlFor="workspace-select">Chọn workspace</label><select id="workspace-select" value={workspaceId} onChange={e => { setWorkspaceId(e.target.value); setSearchParams({ workspaceId: e.target.value }) }} className="max-w-48 rounded-full border border-[#e3eaf4] bg-white px-3 py-2 text-xs font-medium text-[#243d9a]">{workspaces.length === 0 && <option value="">Đang tải workspace</option>}{workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
+      <label className="sr-only" htmlFor="workspace-select">Chọn workspace</label><Select id="workspace-select" value={workspaceId} onValueChange={value => { setWorkspaceId(value); setSearchParams({ workspaceId: value }) }} options={workspaces.length === 0 ? [{ value: '', label: 'Đang tải workspace' }] : workspaces.map(w => ({ value: w.id, label: w.name }))} className="h-9 w-auto max-w-48 rounded-full text-xs font-medium text-[#243d9a]" />
       <span className="hidden text-sm text-[#9aa8bb] md:inline">/</span><span className="hidden text-sm text-[#718096] md:inline">{currentPage}</span>
       <div className="ml-auto flex items-center gap-2">
         <InvitationInbox onAccepted={() => void loadWorkspaces()} />

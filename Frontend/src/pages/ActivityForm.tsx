@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { listOpportunities, saveActivity } from '@/services/crm'
 import type { OpportunityOption, RecordItem } from '@/types/crm'
 
@@ -72,21 +73,20 @@ function ActivityForm({ workspaceId, kind, item, onSaved, onCancel }: {
     }
   }
 
-  const selectClass = 'h-10 w-full rounded-lg border border-input bg-white px-3 text-sm'
   return <form onSubmit={submit} className="mt-6 rounded-2xl border border-[#e2e8f4] bg-white p-6">
     <h2 className="mb-5 text-lg font-semibold">{item ? 'Chỉnh sửa' : 'Tạo'} {kind === 'tasks' ? 'công việc' : 'lịch hẹn'}</h2>
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-2"><Label htmlFor="activity-title">Tiêu đề *</Label><Input id="activity-title" required value={title} onChange={event => setTitle(event.target.value)} /></div>
-      <div className="space-y-2"><Label htmlFor="activity-opportunity">Cơ hội liên quan</Label><select id="activity-opportunity" className={selectClass} value={opportunityId} onChange={event => setOpportunityId(event.target.value)}><option value="">Không chọn</option>{opportunities.map(opportunity => <option key={opportunity.id} value={opportunity.id}>{opportunity.title}</option>)}</select></div>
+      <div className="space-y-2"><Label htmlFor="activity-opportunity">Cơ hội liên quan</Label><Select id="activity-opportunity" value={opportunityId} onValueChange={setOpportunityId} options={[{ value: '', label: 'Không chọn' }, ...opportunities.map(opportunity => ({ value: opportunity.id, label: opportunity.title }))]} /></div>
       <div className="space-y-2"><Label htmlFor="activity-start">Bắt đầu{kind === 'calendar' && ' *'}</Label><Input id="activity-start" type="datetime-local" required={kind === 'calendar'} value={start} onChange={event => setStart(event.target.value)} /></div>
       <div className="space-y-2"><Label htmlFor="activity-end">{kind === 'calendar' ? 'Kết thúc *' : 'Hạn hoàn thành'}</Label><Input id="activity-end" type="datetime-local" required={kind === 'calendar'} value={end} onChange={event => setEnd(event.target.value)} /></div>
       {kind === 'calendar' ? <>
-        <div className="space-y-2"><Label htmlFor="activity-type">Hình thức</Label><select id="activity-type" className={selectClass} value={type} onChange={event => setType(event.target.value)}><option value="offline">Trực tiếp</option><option value="online">Trực tuyến</option><option value="phone">Điện thoại</option></select></div>
+        <div className="space-y-2"><Label htmlFor="activity-type">Hình thức</Label><Select id="activity-type" value={type} onValueChange={setType} options={[{ value: 'offline', label: 'Trực tiếp' }, { value: 'online', label: 'Trực tuyến' }, { value: 'phone', label: 'Điện thoại' }]} /></div>
         <div className="space-y-2"><Label htmlFor="activity-location">Địa điểm</Label><Input id="activity-location" value={location} onChange={event => setLocation(event.target.value)} /></div>
         <div className="space-y-2"><Label htmlFor="activity-url">Liên kết cuộc họp</Label><Input id="activity-url" type="url" value={meetingUrl} onChange={event => setMeetingUrl(event.target.value)} /></div>
       </> : <>
-        <div className="space-y-2"><Label htmlFor="activity-priority">Ưu tiên</Label><select id="activity-priority" className={selectClass} value={priority} onChange={event => setPriority(event.target.value)}><option value="low">Thấp</option><option value="medium">Trung bình</option><option value="high">Cao</option><option value="urgent">Khẩn cấp</option></select></div>
-        <div className="space-y-2"><Label htmlFor="activity-status">Trạng thái</Label><select id="activity-status" className={selectClass} value={status} onChange={event => setStatus(event.target.value)}><option value="todo">Cần làm</option><option value="in_progress">Đang thực hiện</option><option value="done">Hoàn thành</option><option value="cancelled">Đã hủy</option></select></div>
+        <div className="space-y-2"><Label htmlFor="activity-priority">Ưu tiên</Label><Select id="activity-priority" value={priority} onValueChange={setPriority} options={[{ value: 'low', label: 'Thấp' }, { value: 'medium', label: 'Trung bình' }, { value: 'high', label: 'Cao' }, { value: 'urgent', label: 'Khẩn cấp' }]} /></div>
+        <div className="space-y-2"><Label htmlFor="activity-status">Trạng thái</Label><Select id="activity-status" value={status} onValueChange={setStatus} options={[{ value: 'todo', label: 'Cần làm' }, { value: 'in_progress', label: 'Đang thực hiện' }, { value: 'done', label: 'Hoàn thành' }, { value: 'cancelled', label: 'Đã hủy' }]} /></div>
       </>}
       <div className="space-y-2 sm:col-span-2"><Label htmlFor="activity-description">Mô tả / kế hoạch</Label><textarea id="activity-description" rows={3} value={description} onChange={event => setDescription(event.target.value)} className="w-full resize-y rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" /></div>
     </div>

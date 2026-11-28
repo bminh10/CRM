@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { listPipelines, listStages, saveRecord } from '@/services/crm'
 import type { Option, RecordItem } from '@/types/crm'
 
@@ -45,11 +46,10 @@ function OpportunityForm({ workspaceId, item, onSaved, onCancel }: {
     catch (e) { setError(e instanceof Error ? e.message : 'Không thể lưu cơ hội.') }
     finally { setSaving(false) }
   }
-  const selectClass = 'h-10 w-full rounded-lg border border-input bg-white px-3 text-sm'
   return <form onSubmit={submit} className="mt-6 rounded-2xl border border-[#e2e8f4] bg-white p-6"><h2 className="mb-5 text-lg font-semibold">{item ? 'Chỉnh sửa' : 'Thêm'} cơ hội</h2><div className="grid gap-4 sm:grid-cols-2">
     <div className="space-y-2"><Label htmlFor="op-title">Tên cơ hội *</Label><Input id="op-title" required value={title} onChange={e => setTitle(e.target.value)} /></div>
-    <div className="space-y-2"><Label htmlFor="op-pipeline">Quy trình *</Label><select id="op-pipeline" required value={pipelineId} onChange={e => { setPipelineId(e.target.value); setStageId(''); setStages([]) }} className={selectClass}><option value="">Chọn quy trình</option>{pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-    <div className="space-y-2"><Label htmlFor="op-stage">Giai đoạn *</Label><select id="op-stage" required value={stageId} onChange={e => setStageId(e.target.value)} className={selectClass}><option value="">Chọn giai đoạn</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+    <div className="space-y-2"><Label htmlFor="op-pipeline">Quy trình *</Label><Select id="op-pipeline" required value={pipelineId} onValueChange={value => { setPipelineId(value); setStageId(''); setStages([]) }} options={[{ value: '', label: 'Chọn quy trình' }, ...pipelines.map(p => ({ value: p.id, label: p.name }))]} /></div>
+    <div className="space-y-2"><Label htmlFor="op-stage">Giai đoạn *</Label><Select id="op-stage" required value={stageId} onValueChange={setStageId} options={[{ value: '', label: 'Chọn giai đoạn' }, ...stages.map(s => ({ value: s.id, label: s.name }))]} /></div>
     <div className="space-y-2"><Label htmlFor="op-value">Giá trị dự kiến *</Label><Input id="op-value" type="number" required min="0" step="any" value={value} onChange={e => setValue(e.target.value)} /></div>
     <div className="space-y-2"><Label htmlFor="op-probability">Xác suất (%) *</Label><Input id="op-probability" type="number" required min="0" max="100" step="1" value={probability} onChange={e => setProbability(e.target.value)} /></div>
   </div>{pipelines.length === 0 && <p className="mt-4 text-sm text-slate-500">Tạo quy trình và giai đoạn trước khi thêm cơ hội.</p>}{error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}<div className="mt-5 flex gap-2"><Button disabled={saving} className="bg-[#243d9a] text-white hover:bg-[#1c327f]">{saving ? 'Đang lưu...' : 'Lưu'}</Button><Button type="button" variant="outline" onClick={onCancel}>Hủy</Button></div></form>

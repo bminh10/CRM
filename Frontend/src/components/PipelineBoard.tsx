@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { ArrowRight, Check, CircleDollarSign, GitBranch, ListChecks, MoveRight, Target } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Select } from '@/components/ui/select'
 import { listPipelineOpportunities, listStages, moveOpportunity } from '@/services/crm'
 import type { Option, PipelineOpportunity, RecordItem } from '@/types/crm'
 
@@ -84,9 +85,7 @@ function PipelineBoard({ workspaceId, pipelines, revision, editable }: PipelineB
       <div className="flex items-center gap-3">
         <Badge variant="outline" className="hidden rounded-full border-[#e5eaf2] px-3 py-1.5 text-[#718096] sm:inline-flex">{stages.length} giai đoạn</Badge>
         <label className="sr-only" htmlFor="pipeline-route">Chọn quy trình</label>
-        <select id="pipeline-route" value={pipelineId} onChange={event => { setSelectedId(event.target.value); setSelectedStageId('') }} className="max-w-48 rounded-lg border border-[#dce4f2] bg-white px-3 py-2 text-sm font-medium text-[#1e2d58] focus-visible:outline-2 focus-visible:outline-[#5268b0]">
-          {pipelines.map(pipeline => <option key={pipeline.id} value={pipeline.id}>{String(pipeline.name ?? '')}</option>)}
-        </select>
+        <Select id="pipeline-route" value={pipelineId} onValueChange={value => { setSelectedId(value); setSelectedStageId('') }} options={pipelines.map(pipeline => ({ value: pipeline.id, label: String(pipeline.name ?? '') }))} className="w-auto max-w-48 font-medium text-[#1e2d58]" />
       </div>
     </header>
 
@@ -155,9 +154,7 @@ function PipelineBoard({ workspaceId, pipelines, revision, editable }: PipelineB
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#edf1f8] pt-3">
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-[#243d9a]"><CircleDollarSign className="size-4" /> {currency.format(item.expectedValue)} đ</span>
                   <label className="flex items-center gap-1.5 text-xs text-[#8290a6]"><span className="sr-only">Chuyển {item.title} sang giai đoạn</span><MoveRight className="size-3.5" />
-                        <select aria-label={`Chuyển ${item.title} sang giai đoạn`} value={item.stageId} disabled={!editable || !!moving} onChange={event => void move(item.id, event.target.value)} className="max-w-36 rounded-md border border-[#e1e7f0] bg-white px-2 py-1.5 text-xs text-[#52627c] disabled:opacity-50">
-                      {stages.map(destination => <option key={destination.id} value={destination.id}>{destination.name}</option>)}
-                    </select>
+                    <Select aria-label={`Chuyển ${item.title} sang giai đoạn`} value={item.stageId} disabled={!editable || !!moving} onValueChange={value => void move(item.id, value)} options={stages.map(destination => ({ value: destination.id, label: destination.name }))} className="h-8 w-auto max-w-36 rounded-md px-2 text-xs text-[#52627c]" />
                   </label>
                 </div>
               </CardContent>
